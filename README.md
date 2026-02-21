@@ -4,6 +4,8 @@ A fast, no-nonsense fractal explorer for Windows.
 Renders Mandelbrot, Julia, and Burning Ship fractals using AVX2-vectorised,
 multithreaded arithmetic — no GPU required.
 
+![Fractal Xplorer screenshot](window.png)
+
 ---
 
 ## Requirements
