@@ -1,0 +1,16 @@
+# Build output
+build/
+
+# Packaged release
+fractal_xplorer-*/
+*.zip
+
+# ImGui layout (user-local)
+imgui.ini
+
+# Claude Code local settings
+.claude/
+
+# Mercurial
+.hg/
+.hgignore

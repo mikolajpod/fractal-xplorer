@@ -1,0 +1,4 @@
+# Keep LF everywhere — project is built with MSYS2/MinGW
+* text=auto eol=lf
+*.sh text eol=lf
+*.bat text eol=crlf
