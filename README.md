@@ -47,6 +47,7 @@ Exports are saved to the folder the exe is in.
 | `Page Up` / `Page Down` | Double / halve iteration count |
 | `P` / `Shift+P` | Cycle palette forward / backward |
 | `Ctrl+S` | Open export dialog |
+| `B` | Open benchmark dialog |
 | `F1` | About |
 
 ---
@@ -110,6 +111,17 @@ Open with `Ctrl+S` or **File → Export Image**.
 - **Format:** PNG (lossless) or JPEG XL (lossless, typically 2–3× smaller)
 - **Resolution:** 1× / 2× / 4× current window size, or custom up to 7680 × 4320
 - Filename is auto-generated: `mandelbrot_20260221_143012.png`
+
+---
+
+## Benchmark
+
+Open with `B` or **Tools → Benchmark**.
+
+Renders 1920×1080 Mandelbrot (center −0.5, width 3.5, 256 iter) for each thread
+count from 1 to the number of logical CPUs, averaging 4 runs per setting.
+Results are shown as two bar charts (AVX2 in blue, Scalar in orange), both on
+the same Mpix/s scale. Hover over a bar to see the exact value.
 
 ---
 

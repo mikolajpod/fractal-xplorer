@@ -262,7 +262,7 @@ int main(int argc, char* argv[])
         }
         if (ImGui::IsKeyPressed(ImGuiKey_F1))
             show_about = true;
-        if (!io.WantCaptureKeyboard) {
+        if (!io.WantTextInput) {
             if (ImGui::IsKeyPressed(ImGuiKey_Equal) ||
                 ImGui::IsKeyPressed(ImGuiKey_KeypadAdd)) {
                 vs.view_width /= 1.5;  dirty = true;
@@ -743,6 +743,159 @@ int main(int argc, char* argv[])
                     if (ImGui::Button("Close", ImVec2(80.0f, 0.0f)))
                         ImGui::CloseCurrentPopup();
                 }
+            }
+            ImGui::EndPopup();
+        }
+
+        // -------------------------------------------------------------------
+        // Benchmark dialog
+        // -------------------------------------------------------------------
+        if (show_benchmark) {
+            ImGui::SetNextWindowSize(ImVec2(520, 620), ImGuiCond_Always);
+            ImGui::OpenPopup("Benchmark##dlg");
+            show_benchmark = false;
+        }
+        if (ImGui::BeginPopupModal("Benchmark##dlg", nullptr, ImGuiWindowFlags_NoResize)) {
+            const int hw = renderer.hw_concurrency;
+
+            // Per-run state (static — persists across frames while modal is open)
+            static bool   bench_running  = false;
+            static bool   bench_done     = false;
+            static int    bench_phase    = 0;   // 0=AVX2, 1=scalar
+            static int    bench_ti       = 0;   // thread index 0-based
+            static int    bench_rep      = 0;   // repetition 0-3
+            static double bench_sum      = 0.0;
+            static int    bench_saved_tc = 0;   // saved thread count
+            static bool   bench_saved_a2 = false;
+            static std::vector<float> bench_avx2;
+            static std::vector<float> bench_scalar;
+            static PixelBuffer bench_buf;
+
+            // One render step per frame while running
+            if (bench_running) {
+                renderer.set_thread_count(bench_ti + 1);
+                renderer.set_avx2(bench_phase == 0);
+
+                ViewState bvs;   // Mandelbrot, center (-0.5,0), width 3.5, 256 iter
+                bvs.center_x   = -0.5;
+                bvs.view_width =  3.5;
+                bench_buf.resize(1920, 1080);
+                renderer.render(bvs, bench_buf);
+                bench_sum += renderer.last_render_ms;
+                bench_rep++;
+
+                if (bench_rep == 4) {
+                    const double avg_ms = bench_sum / 4.0;
+                    const float  mpixs  = static_cast<float>(
+                        1920.0 * 1080.0 / (avg_ms * 1000.0));
+                    if (bench_phase == 0) bench_avx2[bench_ti]   = mpixs;
+                    else                  bench_scalar[bench_ti]  = mpixs;
+                    bench_sum = 0.0;
+                    bench_rep = 0;
+                    bench_ti++;
+
+                    if (bench_ti == hw) {
+                        bench_ti = 0;
+                        bench_phase++;
+                        if (bench_phase == 2) {
+                            bench_running = false;
+                            bench_done    = true;
+                            renderer.set_thread_count(bench_saved_tc);
+                            renderer.set_avx2(bench_saved_a2);
+                            dirty = true;  // restore main view
+                        }
+                    }
+                }
+            }
+
+            // Run button
+            if (!bench_running) {
+                if (ImGui::Button(bench_done ? "Run again" : "Run")) {
+                    bench_avx2.assign(hw, 0.0f);
+                    bench_scalar.assign(hw, 0.0f);
+                    bench_phase   = 0;
+                    bench_ti      = 0;
+                    bench_rep     = 0;
+                    bench_sum     = 0.0;
+                    bench_done    = false;
+                    bench_saved_tc = renderer.thread_count;
+                    bench_saved_a2 = renderer.avx2_active;
+                    bench_running  = true;
+                }
+            } else {
+                ImGui::BeginDisabled();
+                ImGui::Button("Running...");
+                ImGui::EndDisabled();
+            }
+
+            // Progress
+            if (bench_running || bench_done) {
+                const int total = hw * 2 * 4;
+                const int done  = bench_phase * hw * 4 + bench_ti * 4 + bench_rep;
+                ImGui::SameLine();
+                char prog[64];
+                if (bench_running)
+                    snprintf(prog, sizeof(prog), "%s  %d/%d threads  rep %d/4",
+                             bench_phase == 0 ? "AVX2" : "Scalar",
+                             bench_ti + 1, hw, bench_rep + 1);
+                else
+                    snprintf(prog, sizeof(prog), "Done");
+                ImGui::TextDisabled("%s", prog);
+                ImGui::ProgressBar(static_cast<float>(done) / total,
+                                   ImVec2(-1.0f, 0.0f));
+            }
+
+            // Chart — overlay AVX2 (blue) and Scalar (orange) on same area
+            if ((bench_running && (bench_phase > 0 || bench_ti > 0)) || bench_done) {
+                ImGui::Spacing();
+                ImGui::Separator();
+                ImGui::Spacing();
+
+                const float avail = ImGui::GetContentRegionAvail().x;
+                const ImVec2 plot_sz(avail, 110.0f);
+
+                // Compute common Y scale from whichever data is ready
+                float y_max = 1.0f;
+                for (int i = 0; i < hw; ++i) {
+                    if (bench_avx2[i]   > y_max) y_max = bench_avx2[i];
+                    if (bench_scalar[i] > y_max) y_max = bench_scalar[i];
+                }
+                y_max *= 1.1f;  // 10% headroom
+
+                // AVX2 chart
+                char avx2_lbl[48], scalar_lbl[48];
+                snprintf(avx2_lbl,   sizeof(avx2_lbl),
+                         "AVX2  (Mpix/s, 1..%d threads)", hw);
+                snprintf(scalar_lbl, sizeof(scalar_lbl),
+                         "Scalar(Mpix/s, 1..%d threads)", hw);
+
+                ImGui::PushStyleColor(ImGuiCol_PlotHistogram, ImVec4(0.3f, 0.7f, 1.0f, 1.0f));
+                ImGui::PlotHistogram("##avx2", bench_avx2.data(), hw, 0,
+                                     avx2_lbl, 0.0f, y_max, plot_sz);
+                ImGui::PopStyleColor();
+
+                // Scalar chart — same Y scale so they are visually comparable
+                ImGui::PushStyleColor(ImGuiCol_PlotHistogram, ImVec4(1.0f, 0.6f, 0.2f, 1.0f));
+                ImGui::PlotHistogram("##scalar", bench_scalar.data(), hw, 0,
+                                     scalar_lbl, 0.0f, y_max, plot_sz);
+                ImGui::PopStyleColor();
+
+                ImGui::Spacing();
+                ImGui::TextDisabled("1920x1080  Mandelbrot  256 iter  avg 4 runs"
+                                    "  hover for exact value");
+            }
+
+            ImGui::Spacing();
+            ImGui::Separator();
+            ImGui::Spacing();
+            if (ImGui::Button("Close") || ImGui::IsKeyPressed(ImGuiKey_Escape)) {
+                if (bench_running) {
+                    bench_running = false;
+                    renderer.set_thread_count(bench_saved_tc);
+                    renderer.set_avx2(bench_saved_a2);
+                    dirty = true;
+                }
+                ImGui::CloseCurrentPopup();
             }
             ImGui::EndPopup();
         }
