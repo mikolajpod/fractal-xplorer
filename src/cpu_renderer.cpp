@@ -17,8 +17,16 @@ CpuRenderer::CpuRenderer()
 
     int n = static_cast<int>(std::thread::hardware_concurrency());
     if (n < 1) n = 4;
-    thread_count = n;
+    hw_concurrency = n;
+    thread_count   = n;
     pool = std::make_unique<ThreadPool>(n);
+}
+
+void CpuRenderer::set_thread_count(int n)
+{
+    if (n < 1) n = hw_concurrency;
+    pool = std::make_unique<ThreadPool>(n);
+    thread_count = n;
 }
 
 // -----------------------------------------------------------------------
@@ -46,12 +54,27 @@ void CpuRenderer::render_tile(const ViewState& vs, PixelBuffer& buf,
                 double smooth4[4];
 
                 switch (vs.fractal) {
+                    case FractalType::Mandelbrot:
+                        if (vs.multibrot_exp == 2)
+                            avx2_mandelbrot_4(re0, scale, im, vs.max_iter, smooth4);
+                        else
+                            avx2_multibrot_4(re0, scale, im, vs.max_iter,
+                                             vs.multibrot_exp, smooth4);
+                        break;
                     case FractalType::Julia:
-                        avx2_julia_4(re0, scale, im, vs.max_iter,
-                                     vs.julia_re, vs.julia_im, smooth4);
+                        if (vs.multibrot_exp == 2)
+                            avx2_julia_4(re0, scale, im, vs.max_iter,
+                                         vs.julia_re, vs.julia_im, smooth4);
+                        else
+                            avx2_multijulia_4(re0, scale, im, vs.max_iter,
+                                              vs.multibrot_exp,
+                                              vs.julia_re, vs.julia_im, smooth4);
                         break;
                     case FractalType::BurningShip:
                         avx2_burning_ship_4(re0, scale, im, vs.max_iter, smooth4);
+                        break;
+                    case FractalType::Mandelbar:
+                        avx2_mandelbar_4(re0, scale, im, vs.max_iter, smooth4);
                         break;
                     default:
                         avx2_mandelbrot_4(re0, scale, im, vs.max_iter, smooth4);
@@ -68,11 +91,22 @@ void CpuRenderer::render_tile(const ViewState& vs, PixelBuffer& buf,
             const double re = x0 + px * scale;
             double smooth;
             switch (vs.fractal) {
+                case FractalType::Mandelbrot:
+                    smooth = (vs.multibrot_exp == 2)
+                        ? mandelbrot_iter(re, im, vs.max_iter)
+                        : multibrot_iter(re, im, vs.max_iter, vs.multibrot_exp);
+                    break;
                 case FractalType::Julia:
-                    smooth = julia_iter(re, im, vs.julia_re, vs.julia_im, vs.max_iter);
+                    smooth = (vs.multibrot_exp == 2)
+                        ? julia_iter(re, im, vs.julia_re, vs.julia_im, vs.max_iter)
+                        : multijulia_iter(re, im, vs.julia_re, vs.julia_im,
+                                          vs.max_iter, vs.multibrot_exp);
                     break;
                 case FractalType::BurningShip:
                     smooth = burning_ship_iter(re, im, vs.max_iter);
+                    break;
+                case FractalType::Mandelbar:
+                    smooth = mandelbar_iter(re, im, vs.max_iter);
                     break;
                 default:
                     smooth = mandelbrot_iter(re, im, vs.max_iter);

@@ -119,6 +119,9 @@ int main(int argc, char* argv[])
     bool        dirty      = true;
     bool        show_about = false;
 
+    // Benchmark dialog
+    bool        show_benchmark = false;
+
     // Export dialog
     bool        show_export  = false;
     int         exp_scale    = 1;      // 0=1x, 1=2x, 2=4x, 3=custom
@@ -209,20 +212,24 @@ int main(int argc, char* argv[])
             }
             if (ImGui::BeginMenu("View")) {
                 if (ImGui::MenuItem("Reset View", "R")) {
-                    FractalType ft  = vs.fractal;
-                    double jre = vs.julia_re, jim = vs.julia_im;
-                    int    pal = vs.palette,  poff = vs.pal_offset;
-                    vs = ViewState{};
-                    vs.fractal    = ft;
-                    vs.julia_re   = jre;
-                    vs.julia_im   = jim;
-                    vs.palette    = pal;
-                    vs.pal_offset = poff;
+                    FractalType ft    = vs.fractal;
+                    double jre = vs.julia_re,        jim   = vs.julia_im;
+                    int    pal = vs.palette,          poff  = vs.pal_offset;
+                    int    mexp = vs.multibrot_exp;   double mexpf = vs.multibrot_exp_f;
+                    int    iter = vs.max_iter;
+                    vs = default_view_for(ft);
+                    vs.fractal         = ft;
+                    vs.julia_re        = jre;   vs.julia_im        = jim;
+                    vs.palette         = pal;   vs.pal_offset      = poff;
+                    vs.multibrot_exp   = mexp;  vs.multibrot_exp_f = mexpf;
+                    vs.max_iter        = iter;
                     dirty = true;
                 }
                 ImGui::EndMenu();
             }
             if (ImGui::BeginMenu("Help")) {
+                if (ImGui::MenuItem("Benchmark", "B")) show_benchmark = true;
+                ImGui::Separator();
                 if (ImGui::MenuItem("About", "F1")) show_about = true;
                 ImGui::EndMenu();
             }
@@ -238,15 +245,17 @@ int main(int argc, char* argv[])
             exp_msg.clear();
         }
         if (ImGui::IsKeyPressed(ImGuiKey_R)) {
-            FractalType ft  = vs.fractal;
-            double jre = vs.julia_re, jim = vs.julia_im;
-            int    pal = vs.palette,  poff = vs.pal_offset;
-            vs = ViewState{};
-            vs.fractal    = ft;
-            vs.julia_re   = jre;
-            vs.julia_im   = jim;
-            vs.palette    = pal;
-            vs.pal_offset = poff;
+            FractalType ft    = vs.fractal;
+            double jre = vs.julia_re,        jim   = vs.julia_im;
+            int    pal = vs.palette,          poff  = vs.pal_offset;
+            int    mexp = vs.multibrot_exp;   double mexpf = vs.multibrot_exp_f;
+            int    iter = vs.max_iter;
+            vs = default_view_for(ft);
+            vs.fractal         = ft;
+            vs.julia_re        = jre;   vs.julia_im        = jim;
+            vs.palette         = pal;   vs.pal_offset      = poff;
+            vs.multibrot_exp   = mexp;  vs.multibrot_exp_f = mexpf;
+            vs.max_iter        = iter;
             dirty = true;
         }
         if (ImGui::IsKeyPressed(ImGuiKey_F1))
@@ -259,6 +268,28 @@ int main(int argc, char* argv[])
             ImGui::IsKeyPressed(ImGuiKey_KeypadSubtract)) {
             vs.view_width *= 1.5;  dirty = true;
         }
+        // Arrow keys: pan by 10% of view width
+        if (ImGui::IsKeyPressed(ImGuiKey_LeftArrow,  true))
+            { vs.center_x -= vs.view_width * 0.1;  dirty = true; }
+        if (ImGui::IsKeyPressed(ImGuiKey_RightArrow, true))
+            { vs.center_x += vs.view_width * 0.1;  dirty = true; }
+        if (ImGui::IsKeyPressed(ImGuiKey_UpArrow,    true))
+            { vs.center_y -= vs.view_width * 0.1;  dirty = true; }
+        if (ImGui::IsKeyPressed(ImGuiKey_DownArrow,  true))
+            { vs.center_y += vs.view_width * 0.1;  dirty = true; }
+        // PageUp/Down: double or halve iteration count
+        if (ImGui::IsKeyPressed(ImGuiKey_PageUp))
+            { vs.max_iter = std::min(vs.max_iter * 2, 8192);  dirty = true; }
+        if (ImGui::IsKeyPressed(ImGuiKey_PageDown))
+            { vs.max_iter = std::max(vs.max_iter / 2, 64);    dirty = true; }
+        // 1-8: quick palette select
+        for (int k = 0; k < PALETTE_COUNT; ++k) {
+            if (ImGui::IsKeyPressed(static_cast<ImGuiKey>(ImGuiKey_1 + k)))
+                { vs.palette = k;  dirty = true; }
+        }
+        // B: benchmark
+        if (ImGui::IsKeyPressed(ImGuiKey_B))
+            show_benchmark = true;
 
         // -------------------------------------------------------------------
         // Side panel
@@ -275,13 +306,51 @@ int main(int argc, char* argv[])
         ImGui::TextDisabled("FRACTAL");
         ImGui::Separator();
         {
-            static const char* names[] = { "Mandelbrot", "Julia", "Burning Ship" };
+            static const char* names[] = {
+                "Mandelbrot", "Julia", "Burning Ship",
+                "Mandelbar", "Multibrot (slow)", "Multijulia (slow)"
+            };
             int ft = static_cast<int>(vs.fractal);
             ImGui::SetNextItemWidth(-1.0f);
-            if (ImGui::Combo("##fractal", &ft, names, 3)) {
-                vs.fractal = static_cast<FractalType>(ft);
+            if (ImGui::Combo("##fractal", &ft, names, FRACTAL_COUNT)) {
+                FractalType new_ft = static_cast<FractalType>(ft);
+                double jre = vs.julia_re,        jim   = vs.julia_im;
+                int    pal = vs.palette,          poff  = vs.pal_offset;
+                int    mexp = vs.multibrot_exp;   double mexpf = vs.multibrot_exp_f;
+                int    iter = vs.max_iter;
+                vs = default_view_for(new_ft);
+                vs.fractal         = new_ft;
+                vs.julia_re        = jre;   vs.julia_im        = jim;
+                vs.palette         = pal;   vs.pal_offset      = poff;
+                vs.multibrot_exp   = mexp;  vs.multibrot_exp_f = mexpf;
+                vs.max_iter        = iter;
                 dirty = true;
             }
+            if (ImGui::IsItemHovered() && io.MouseWheel != 0.0f) {
+                int nft = (ft + (io.MouseWheel < 0.0f ? 1 : -1) + FRACTAL_COUNT) % FRACTAL_COUNT;
+                FractalType new_ft = static_cast<FractalType>(nft);
+                double jre = vs.julia_re,        jim   = vs.julia_im;
+                int    pal = vs.palette,          poff  = vs.pal_offset;
+                int    mexp = vs.multibrot_exp;   double mexpf = vs.multibrot_exp_f;
+                int    iter = vs.max_iter;
+                vs = default_view_for(new_ft);
+                vs.fractal         = new_ft;
+                vs.julia_re        = jre;   vs.julia_im        = jim;
+                vs.palette         = pal;   vs.pal_offset      = poff;
+                vs.multibrot_exp   = mexp;  vs.multibrot_exp_f = mexpf;
+                vs.max_iter        = iter;
+                dirty = true;
+            }
+        }
+
+        // --- Exponent (Mandelbrot / Julia fast path, n >= 3 = Multibrot) ---
+        if (vs.fractal == FractalType::Mandelbrot || vs.fractal == FractalType::Julia) {
+            ImGui::Spacing();
+            ImGui::TextDisabled("EXPONENT");
+            ImGui::Separator();
+            ImGui::SetNextItemWidth(-1.0f);
+            if (ImGui::SliderInt("##mexp", &vs.multibrot_exp, 2, 8))
+                dirty = true;
         }
 
         // --- Iteration count ---
@@ -306,6 +375,10 @@ int main(int argc, char* argv[])
             ImGui::SetNextItemWidth(-1.0f);
             if (ImGui::Combo("##palette", &vs.palette, g_palette_names, PALETTE_COUNT))
                 dirty = true;
+            if (ImGui::IsItemHovered() && io.MouseWheel != 0.0f) {
+                vs.palette = (vs.palette + (io.MouseWheel < 0.0f ? 1 : -1) + PALETTE_COUNT) % PALETTE_COUNT;
+                dirty = true;
+            }
             ImGui::Spacing();
             ImGui::Text("Offset");
             ImGui::SetNextItemWidth(-1.0f);
@@ -318,18 +391,27 @@ int main(int argc, char* argv[])
         ImGui::TextDisabled("JULIA PARAMETER");
         ImGui::Separator();
 
-        // Mini map dimensions: fill panel width, maintain Mandelbrot aspect
+        // Mini map dimensions: square, covers -2..2 on both axes
         const float map_w     = ImGui::GetContentRegionAvail().x;
-        const float map_h     = map_w * (2.5f / 3.5f);
+        const float map_h     = map_w;   // square: same range on both axes
         const int   map_iw    = static_cast<int>(map_w);
         const int   map_ih    = static_cast<int>(map_h);
         // Complex units per display pixel in the mini map
-        const float map_scale = 3.5f / map_w;
+        const float map_scale = 4.0f / map_w;
 
-        // Render mini map once (fixed standard Mandelbrot view)
+        // Re-render mini map when exponent changes
+        static int mini_last_exp = 2;
+        if (mini_last_exp != vs.multibrot_exp) {
+            mini_dirty    = true;
+            mini_last_exp = vs.multibrot_exp;
+        }
+
+        // Render mini map: symmetric -2..2 view, matching current exponent
         if (mini_dirty && map_iw > 0 && map_ih > 0) {
-            ViewState mini_vs;          // default: Mandelbrot, center (-0.5,0)
-            mini_vs.max_iter = 128;
+            ViewState mini_vs;
+            // center_x/y = 0, view_width = 4.0 — from struct defaults
+            mini_vs.max_iter      =  128;
+            mini_vs.multibrot_exp = vs.multibrot_exp;
             mini_pbuf.resize(map_iw, map_ih);
             renderer.render(mini_vs, mini_pbuf);
             g_mini_tex.ensure(map_iw, map_ih);
@@ -346,7 +428,7 @@ int main(int argc, char* argv[])
 
             // Draw c-parameter indicator (bullseye)
             const float dot_x = map_tl.x
-                + (static_cast<float>(vs.julia_re) + 0.5f) / map_scale
+                + static_cast<float>(vs.julia_re) / map_scale
                 + map_w * 0.5f;
             const float dot_y = map_tl.y
                 + static_cast<float>(vs.julia_im) / map_scale
@@ -366,7 +448,7 @@ int main(int argc, char* argv[])
             if (mini_dragging) {
                 const float mx = io.MousePos.x - map_tl.x;
                 const float my = io.MousePos.y - map_tl.y;
-                vs.julia_re = static_cast<double>(-0.5f + (mx - map_w * 0.5f) * map_scale);
+                vs.julia_re = static_cast<double>((mx - map_w * 0.5f) * map_scale);
                 vs.julia_im = static_cast<double>((my - map_h * 0.5f) * map_scale);
                 // Auto-switch to Julia when user picks a point
                 if (vs.fractal != FractalType::Julia) {
@@ -389,6 +471,29 @@ int main(int argc, char* argv[])
             ImGui::SetNextItemWidth(-1.0f);
             if (ImGui::InputDouble("##jim", &im, 0.001, 0.01, "%.8f"))
                 { vs.julia_im = im; dirty = true; }
+        }
+
+        // --- Thread count ---
+        ImGui::Spacing();
+        ImGui::TextDisabled("THREADS");
+        ImGui::Separator();
+        {
+            static int thread_sel = 0;  // 0 = Auto
+            int hw = renderer.hw_concurrency;
+            // Non-capturing lambda converts to a plain function pointer for ImGui
+            auto thread_getter = [](void* data, int idx, const char** out) -> bool {
+                static char buf[32];
+                const int n = *static_cast<int*>(data);
+                if (idx == 0) { snprintf(buf, sizeof(buf), "Auto (%d)", n); }
+                else          { snprintf(buf, sizeof(buf), "%d", idx); }
+                *out = buf;
+                return true;
+            };
+            ImGui::SetNextItemWidth(-1.0f);
+            if (ImGui::Combo("##threads", &thread_sel, thread_getter, &hw, hw + 1)) {
+                renderer.set_thread_count(thread_sel);
+                dirty = true;
+            }
         }
 
         ImGui::End();  // ##panel

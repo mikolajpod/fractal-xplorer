@@ -14,6 +14,10 @@ public:
     double last_render_ms = 0.0;
     bool   avx2_active    = false;   // true if AVX2 path is in use
     int    thread_count   = 0;
+    int    hw_concurrency = 0;       // logical CPU count detected at startup
+
+    // n=0 restores hw_concurrency
+    void set_thread_count(int n);
 
 private:
     void render_tile(const ViewState& vs, PixelBuffer& buf,

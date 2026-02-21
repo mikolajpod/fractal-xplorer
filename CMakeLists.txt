@@ -72,3 +72,8 @@ target_compile_options(fractal_xplorer PRIVATE -O2)
 set_source_files_properties(src/cpu_renderer_avx.cpp PROPERTIES
     COMPILE_OPTIONS "-O2;-mavx2;-mfma"
 )
+
+# Hide console window on Windows (SDL2main bridges WinMain -> main)
+if (WIN32)
+    target_link_options(fractal_xplorer PRIVATE -mwindows)
+endif()

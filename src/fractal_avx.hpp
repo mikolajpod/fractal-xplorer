@@ -15,3 +15,14 @@ void avx2_julia_4(double re0, double scale, double im,
 
 void avx2_burning_ship_4(double re0, double scale, double im,
                           int max_iter, double* out4);
+
+void avx2_mandelbar_4(double re0, double scale, double im,
+                       int max_iter, double* out4);
+
+// Integer exponent >= 3 (n=2 uses the standard mandelbrot/julia functions)
+void avx2_multibrot_4(double re0, double scale, double im,
+                       int max_iter, int exp_n, double* out4);
+
+void avx2_multijulia_4(double re0, double scale, double im,
+                        int max_iter, int exp_n,
+                        double julia_re, double julia_im, double* out4);

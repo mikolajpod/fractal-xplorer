@@ -1,8 +1,8 @@
 # Fractal Xplorer
 
 A fast, no-nonsense fractal explorer for Windows.
-Renders Mandelbrot, Julia, and Burning Ship fractals using AVX2-vectorised,
-multithreaded arithmetic — no GPU required.
+Renders Mandelbrot, Julia, Burning Ship, Mandelbar, and Multibrot/Multijulia fractals
+using AVX2-vectorised, multithreaded arithmetic — no GPU required.
 
 ![Fractal Xplorer screenshot](window.png)
 
@@ -30,7 +30,7 @@ Exports are saved to the folder the exe is in.
 | Action | Input |
 |---|---|
 | Zoom in / out | Mouse wheel |
-| Pan | Left-click drag |
+| Pan | Left-click drag or arrow keys |
 | Zoom to region | Right-click drag (rubber-band box) |
 | Reset view | `R` key or **View → Reset View** |
 | Zoom step in / out | `+` / `-` keys |
@@ -43,6 +43,9 @@ Exports are saved to the folder the exe is in.
 |---|---|
 | `R` | Reset view to default (centre/zoom only) |
 | `+` / `-` | Zoom step in / out |
+| Arrow keys | Pan (10% of current view width per press) |
+| `Page Up` / `Page Down` | Double / halve iteration count |
+| `1` – `8` | Quick-select palette |
 | `Ctrl+S` | Open export dialog |
 | `F1` | About |
 
@@ -50,12 +53,23 @@ Exports are saved to the folder the exe is in.
 
 ## Side Panel
 
-**Fractal** — switch between Mandelbrot, Julia, and Burning Ship.
+**Fractal** — switch between fractals (mouse wheel also cycles):
+
+| Name | Formula | Notes |
+|---|---|---|
+| Mandelbrot | z² + c | Classic; exponent slider extends to Multibrot |
+| Julia | z² + c (fixed c) | c set via mini map; exponent slider for Multijulia |
+| Burning Ship | (|Re z| + i|Im z|)² + c | |
+| Mandelbar | conj(z)² + c | Tricorn |
+
+**Exponent** — integer slider 2–8, shown for Mandelbrot and Julia.
+At n=2: standard Mandelbrot / Julia. At n≥3: fast Multibrot / Multijulia
+(AVX2-accelerated via repeated complex multiplication, no trig).
 
 **Iterations** — logarithmic slider, 64 – 8192 (default 256).
 Higher values reveal more detail at deep zoom at the cost of speed.
 
-**Palette** — 8 predefined colour palettes:
+**Palette** — 8 predefined colour palettes (mouse wheel cycles):
 
 | # | Name | Character |
 |---|---|---|
@@ -70,9 +84,13 @@ Higher values reveal more detail at deep zoom at the cost of speed.
 
 **Offset** slider — shifts the palette along the iteration axis (0 – 1023).
 
-**Julia parameter** — click or drag on the mini Mandelbrot map to set the
-complex parameter *c*. The main view switches to Julia automatically.
+**Julia parameter** — click or drag on the mini map to set the complex
+parameter *c*. The mini map shows the Mandelbrot-equivalent set for the
+current exponent, so interesting Julia parameters are easy to spot.
 Fine-tune with the **re** / **im** numeric inputs.
+
+**Threads** — select thread count (Auto uses all logical CPUs).
+Change takes effect on the next render.
 
 ---
 
