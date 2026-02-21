@@ -262,36 +262,39 @@ int main(int argc, char* argv[])
         }
         if (ImGui::IsKeyPressed(ImGuiKey_F1))
             show_about = true;
-        if (ImGui::IsKeyPressed(ImGuiKey_Equal) ||
-            ImGui::IsKeyPressed(ImGuiKey_KeypadAdd)) {
-            vs.view_width /= 1.5;  dirty = true;
+        if (!io.WantCaptureKeyboard) {
+            if (ImGui::IsKeyPressed(ImGuiKey_Equal) ||
+                ImGui::IsKeyPressed(ImGuiKey_KeypadAdd)) {
+                vs.view_width /= 1.5;  dirty = true;
+            }
+            if (ImGui::IsKeyPressed(ImGuiKey_Minus) ||
+                ImGui::IsKeyPressed(ImGuiKey_KeypadSubtract)) {
+                vs.view_width *= 1.5;  dirty = true;
+            }
+            // Arrow keys: pan by 10% of view width
+            if (ImGui::IsKeyPressed(ImGuiKey_LeftArrow,  true))
+                { vs.center_x -= vs.view_width * 0.1;  dirty = true; }
+            if (ImGui::IsKeyPressed(ImGuiKey_RightArrow, true))
+                { vs.center_x += vs.view_width * 0.1;  dirty = true; }
+            if (ImGui::IsKeyPressed(ImGuiKey_UpArrow,    true))
+                { vs.center_y -= vs.view_width * 0.1;  dirty = true; }
+            if (ImGui::IsKeyPressed(ImGuiKey_DownArrow,  true))
+                { vs.center_y += vs.view_width * 0.1;  dirty = true; }
+            // PageUp/Down: double or halve iteration count
+            if (ImGui::IsKeyPressed(ImGuiKey_PageUp))
+                { vs.max_iter = std::min(vs.max_iter * 2, 8192);  dirty = true; }
+            if (ImGui::IsKeyPressed(ImGuiKey_PageDown))
+                { vs.max_iter = std::max(vs.max_iter / 2, 64);    dirty = true; }
+            // P / Shift+P: cycle palette forward / backward
+            if (ImGui::IsKeyPressed(ImGuiKey_P)) {
+                int dir = io.KeyShift ? -1 : 1;
+                vs.palette = (vs.palette + dir + PALETTE_COUNT) % PALETTE_COUNT;
+                dirty = true;
+            }
+            // B: benchmark
+            if (ImGui::IsKeyPressed(ImGuiKey_B))
+                show_benchmark = true;
         }
-        if (ImGui::IsKeyPressed(ImGuiKey_Minus) ||
-            ImGui::IsKeyPressed(ImGuiKey_KeypadSubtract)) {
-            vs.view_width *= 1.5;  dirty = true;
-        }
-        // Arrow keys: pan by 10% of view width
-        if (ImGui::IsKeyPressed(ImGuiKey_LeftArrow,  true))
-            { vs.center_x -= vs.view_width * 0.1;  dirty = true; }
-        if (ImGui::IsKeyPressed(ImGuiKey_RightArrow, true))
-            { vs.center_x += vs.view_width * 0.1;  dirty = true; }
-        if (ImGui::IsKeyPressed(ImGuiKey_UpArrow,    true))
-            { vs.center_y -= vs.view_width * 0.1;  dirty = true; }
-        if (ImGui::IsKeyPressed(ImGuiKey_DownArrow,  true))
-            { vs.center_y += vs.view_width * 0.1;  dirty = true; }
-        // PageUp/Down: double or halve iteration count
-        if (ImGui::IsKeyPressed(ImGuiKey_PageUp))
-            { vs.max_iter = std::min(vs.max_iter * 2, 8192);  dirty = true; }
-        if (ImGui::IsKeyPressed(ImGuiKey_PageDown))
-            { vs.max_iter = std::max(vs.max_iter / 2, 64);    dirty = true; }
-        // 1-8: quick palette select
-        for (int k = 0; k < PALETTE_COUNT; ++k) {
-            if (ImGui::IsKeyPressed(static_cast<ImGuiKey>(ImGuiKey_1 + k)))
-                { vs.palette = k;  dirty = true; }
-        }
-        // B: benchmark
-        if (ImGui::IsKeyPressed(ImGuiKey_B))
-            show_benchmark = true;
 
         // -------------------------------------------------------------------
         // Side panel

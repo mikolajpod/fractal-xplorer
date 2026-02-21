@@ -45,7 +45,7 @@ Exports are saved to the folder the exe is in.
 | `+` / `-` | Zoom step in / out |
 | Arrow keys | Pan (10% of current view width per press) |
 | `Page Up` / `Page Down` | Double / halve iteration count |
-| `1` – `8` | Quick-select palette |
+| `P` / `Shift+P` | Cycle palette forward / backward |
 | `Ctrl+S` | Open export dialog |
 | `F1` | About |
 
