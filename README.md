@@ -60,8 +60,8 @@ Exports are saved to the folder the exe is in.
 |---|---|---|
 | Mandelbrot | z² + c | Classic; exponent slider extends to Multibrot |
 | Julia | z² + c (fixed c) | c set via mini map; exponent slider for Multijulia |
-| Burning Ship | (|Re z| + i|Im z|)² + c | |
-| Mandelbar | conj(z)² + c | Tricorn; exponent slider extends to higher degrees |
+| Burning Ship | (\|Re z\| + i\|Im z\|)² + c | |
+| Mandelbar | conj(z)^n + c | Tricorn at n=2; exponent slider 2–8, (n+1)-fold symmetry |
 | Multibrot (slow) | z^n + c, real n | Float exponent, any real value |
 | Multijulia (slow) | z^n + c (fixed c), real n | Float exponent + c from mini map |
 
