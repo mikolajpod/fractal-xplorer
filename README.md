@@ -61,10 +61,18 @@ Exports are saved to the folder the exe is in.
 | Julia | z² + c (fixed c) | c set via mini map; exponent slider for Multijulia |
 | Burning Ship | (|Re z| + i|Im z|)² + c | |
 | Mandelbar | conj(z)² + c | Tricorn |
+| Multibrot (slow) | z^n + c, real n | Float exponent, any real value |
+| Multijulia (slow) | z^n + c (fixed c), real n | Float exponent + c from mini map |
 
-**Exponent** — integer slider 2–8, shown for Mandelbrot and Julia.
+**Exponent (integer)** — slider 2–8, shown for Mandelbrot and Julia.
 At n=2: standard Mandelbrot / Julia. At n≥3: fast Multibrot / Multijulia
 (AVX2-accelerated via repeated complex multiplication, no trig).
+
+**Exponent (float)** — shown for Multibrot (slow) and Multijulia (slow).
+Slider covers −10 to 10; the numeric input below accepts any real value.
+Ctrl+click on the slider to type a value directly.
+When the exponent is an integer value (e.g. 3.0), the fast AVX2 path is used
+automatically. Non-integer exponents use scalar polar-form arithmetic (slower).
 
 **Iterations** — logarithmic slider, 64 – 8192 (default 256).
 Higher values reveal more detail at deep zoom at the cost of speed.
@@ -86,8 +94,9 @@ Higher values reveal more detail at deep zoom at the cost of speed.
 
 **Julia parameter** — click or drag on the mini map to set the complex
 parameter *c*. The mini map shows the Mandelbrot-equivalent set for the
-current exponent, so interesting Julia parameters are easy to spot.
-Fine-tune with the **re** / **im** numeric inputs.
+current exponent (integer or float), so interesting Julia parameters are
+easy to spot. Fine-tune with the **re** / **im** numeric inputs.
+Clicking the mini map updates *c* only — it does not change the active fractal type.
 
 **Threads** — select thread count (Auto uses all logical CPUs).
 Change takes effect on the next render.

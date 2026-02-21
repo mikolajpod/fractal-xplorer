@@ -41,6 +41,16 @@ void CpuRenderer::render_tile(const ViewState& vs, PixelBuffer& buf,
     const double x0    = vs.center_x - W * 0.5 * scale;
     const double y0    = vs.center_y - H * 0.5 * scale;
 
+    // If the float exponent is effectively an integer, use the fast integer path
+    // (AVX2 repeated-multiply, no trig). Covers the common case of e.g. 3.0, 4.0.
+    const int slow_int_n = [&]() -> int {
+        if (vs.fractal != FractalType::MultibroSlow &&
+            vs.fractal != FractalType::MultijuliaSlow)
+            return 0;
+        const int n = static_cast<int>(std::round(vs.multibrot_exp_f));
+        return (n >= 2 && std::abs(vs.multibrot_exp_f - n) < 1e-9) ? n : 0;
+    }();
+
     for (int py = ty; py < ty + th && py < H; ++py) {
         const double im  = y0 + py * scale;
         uint32_t*    row = buf.pixels.data() + py * W;
@@ -48,7 +58,12 @@ void CpuRenderer::render_tile(const ViewState& vs, PixelBuffer& buf,
         const int    end = std::min(tx + tw, W);
 
         // --- AVX2 path: 4 pixels per iteration ---
-        if (use_avx2) {
+        // Slow float-exp fractals bypass AVX2 unless the exponent is an integer.
+        const bool use_avx2_here = use_avx2 &&
+            (vs.fractal != FractalType::MultibroSlow &&
+             vs.fractal != FractalType::MultijuliaSlow ||
+             slow_int_n > 0);
+        if (use_avx2_here) {
             for (; px + 4 <= end; px += 4) {
                 const double re0 = x0 + px * scale;
                 double smooth4[4];
@@ -75,6 +90,22 @@ void CpuRenderer::render_tile(const ViewState& vs, PixelBuffer& buf,
                         break;
                     case FractalType::Mandelbar:
                         avx2_mandelbar_4(re0, scale, im, vs.max_iter, smooth4);
+                        break;
+                    case FractalType::MultibroSlow:
+                        if (slow_int_n == 2)
+                            avx2_mandelbrot_4(re0, scale, im, vs.max_iter, smooth4);
+                        else
+                            avx2_multibrot_4(re0, scale, im, vs.max_iter,
+                                             slow_int_n, smooth4);
+                        break;
+                    case FractalType::MultijuliaSlow:
+                        if (slow_int_n == 2)
+                            avx2_julia_4(re0, scale, im, vs.max_iter,
+                                         vs.julia_re, vs.julia_im, smooth4);
+                        else
+                            avx2_multijulia_4(re0, scale, im, vs.max_iter,
+                                              slow_int_n,
+                                              vs.julia_re, vs.julia_im, smooth4);
                         break;
                     default:
                         avx2_mandelbrot_4(re0, scale, im, vs.max_iter, smooth4);
@@ -107,6 +138,25 @@ void CpuRenderer::render_tile(const ViewState& vs, PixelBuffer& buf,
                     break;
                 case FractalType::Mandelbar:
                     smooth = mandelbar_iter(re, im, vs.max_iter);
+                    break;
+                case FractalType::MultibroSlow:
+                    if (slow_int_n > 0)
+                        smooth = (slow_int_n == 2)
+                            ? mandelbrot_iter(re, im, vs.max_iter)
+                            : multibrot_iter(re, im, vs.max_iter, slow_int_n);
+                    else
+                        smooth = multibrot_slow_iter(re, im, vs.max_iter,
+                                                     vs.multibrot_exp_f);
+                    break;
+                case FractalType::MultijuliaSlow:
+                    if (slow_int_n > 0)
+                        smooth = (slow_int_n == 2)
+                            ? julia_iter(re, im, vs.julia_re, vs.julia_im, vs.max_iter)
+                            : multijulia_iter(re, im, vs.julia_re, vs.julia_im,
+                                              vs.max_iter, slow_int_n);
+                    else
+                        smooth = multijulia_slow_iter(re, im, vs.julia_re, vs.julia_im,
+                                                      vs.max_iter, vs.multibrot_exp_f);
                     break;
                 default:
                     smooth = mandelbrot_iter(re, im, vs.max_iter);

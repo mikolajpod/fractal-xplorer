@@ -116,7 +116,8 @@ int main(int argc, char* argv[])
     ViewState   vs;
     CpuRenderer renderer;
     PixelBuffer pbuf;
-    bool        dirty      = true;
+    bool        dirty         = true;
+    double      main_render_ms = 0.0;   // last main-render time (not overwritten by mini map)
     bool        show_about = false;
 
     // Benchmark dialog
@@ -189,6 +190,7 @@ int main(int argc, char* argv[])
             if (irw > 0 && irh > 0) {
                 pbuf.resize(irw, irh);
                 renderer.render(vs, pbuf);
+                main_render_ms = renderer.last_render_ms;
                 g_render_tex.ensure(irw, irh);
                 g_render_tex.upload(pbuf);
                 update_title();
@@ -343,13 +345,26 @@ int main(int argc, char* argv[])
             }
         }
 
-        // --- Exponent (Mandelbrot / Julia fast path, n >= 3 = Multibrot) ---
+        // --- Exponent ---
         if (vs.fractal == FractalType::Mandelbrot || vs.fractal == FractalType::Julia) {
             ImGui::Spacing();
             ImGui::TextDisabled("EXPONENT");
             ImGui::Separator();
             ImGui::SetNextItemWidth(-1.0f);
             if (ImGui::SliderInt("##mexp", &vs.multibrot_exp, 2, 8))
+                dirty = true;
+        } else if (vs.fractal == FractalType::MultibroSlow ||
+                   vs.fractal == FractalType::MultijuliaSlow) {
+            ImGui::Spacing();
+            ImGui::TextDisabled("EXPONENT (float)");
+            ImGui::Separator();
+            static const double slow_min = -10.0, slow_max = 10.0;
+            ImGui::SetNextItemWidth(-1.0f);
+            if (ImGui::SliderScalar("##mexpf_slider", ImGuiDataType_Double,
+                                    &vs.multibrot_exp_f, &slow_min, &slow_max, "%.4f"))
+                dirty = true;
+            ImGui::SetNextItemWidth(-1.0f);
+            if (ImGui::InputDouble("##mexpf", &vs.multibrot_exp_f, 0.1, 0.5, "%.4f"))
                 dirty = true;
         }
 
@@ -399,19 +414,32 @@ int main(int argc, char* argv[])
         // Complex units per display pixel in the mini map
         const float map_scale = 4.0f / map_w;
 
-        // Re-render mini map when exponent changes
-        static int mini_last_exp = 2;
-        if (mini_last_exp != vs.multibrot_exp) {
-            mini_dirty    = true;
-            mini_last_exp = vs.multibrot_exp;
+        // Re-render mini map when exponent or slow-variant changes
+        static int    mini_last_exp   = 2;
+        static double mini_last_exp_f = 3.0;
+        static bool   mini_last_slow  = false;
+        const bool    is_slow = (vs.fractal == FractalType::MultibroSlow ||
+                                 vs.fractal == FractalType::MultijuliaSlow);
+        if (mini_last_exp   != vs.multibrot_exp   ||
+            mini_last_exp_f != vs.multibrot_exp_f ||
+            mini_last_slow  != is_slow) {
+            mini_dirty      = true;
+            mini_last_exp   = vs.multibrot_exp;
+            mini_last_exp_f = vs.multibrot_exp_f;
+            mini_last_slow  = is_slow;
         }
 
         // Render mini map: symmetric -2..2 view, matching current exponent
         if (mini_dirty && map_iw > 0 && map_ih > 0) {
             ViewState mini_vs;
             // center_x/y = 0, view_width = 4.0 — from struct defaults
-            mini_vs.max_iter      =  128;
-            mini_vs.multibrot_exp = vs.multibrot_exp;
+            mini_vs.max_iter = 128;
+            if (is_slow) {
+                mini_vs.fractal        = FractalType::MultibroSlow;
+                mini_vs.multibrot_exp_f = vs.multibrot_exp_f;
+            } else {
+                mini_vs.multibrot_exp = vs.multibrot_exp;
+            }
             mini_pbuf.resize(map_iw, map_ih);
             renderer.render(mini_vs, mini_pbuf);
             g_mini_tex.ensure(map_iw, map_ih);
@@ -450,10 +478,6 @@ int main(int argc, char* argv[])
                 const float my = io.MousePos.y - map_tl.y;
                 vs.julia_re = static_cast<double>((mx - map_w * 0.5f) * map_scale);
                 vs.julia_im = static_cast<double>((my - map_h * 0.5f) * map_scale);
-                // Auto-switch to Julia when user picks a point
-                if (vs.fractal != FractalType::Julia) {
-                    vs.fractal = FractalType::Julia;
-                }
                 dirty = true;
             }
         }
@@ -604,7 +628,7 @@ int main(int argc, char* argv[])
         ImGui::PopStyleVar();
         ImGui::Text("x: %.8f   y: %.8f   zoom: %.4fx   iter: %d   %.0f ms  [%s  %dt]",
                     vs.center_x, vs.center_y, zoom_display(vs), vs.max_iter,
-                    renderer.last_render_ms,
+                    main_render_ms,
                     renderer.avx2_active ? "AVX2" : "scalar",
                     renderer.thread_count);
         ImGui::End();

@@ -142,14 +142,15 @@ enum class FractalType {
     Julia          = 1,  // fast; multibrot_exp>2 => AVX2 Multijulia
     BurningShip    = 2,
     Mandelbar      = 3,  // Tricorn: conj(z)^2 + c
-    MultibroSlow   = 4,  // float exponent, scalar only — stub, not yet implemented
-    MultijuliaSlow = 5,  // float exponent + fixed c  — stub, not yet implemented
+    MultibroSlow   = 4,  // real exponent; polar form (atan2/pow/sin/cos), scalar
+    MultijuliaSlow = 5,  // real exponent + fixed c; same polar form, scalar
 };
 constexpr int FRACTAL_COUNT = 6;
 ```
 
-`MultibroSlow` and `MultijuliaSlow` are present in the combo but currently fall
-through to the Mandelbrot path. Implementation pending.
+`multibrot_exp_f` is the float exponent for slow types; any real value is accepted.
+When `multibrot_exp_f` is an exact integer (e.g. 3.0), `render_tile()` detects this
+(`slow_int_n`) and routes to the fast AVX2 repeated-multiply kernel instead.
 
 ---
 
@@ -204,9 +205,11 @@ Also increment `PALETTE_COUNT` in `palette.hpp`.
 - **PATH conflict:** If `cc1.exe` loads DLLs from `C:/Program Files/Git/mingw64`
   instead of MSYS2, builds silently break. Fix: MSYS2 must precede Git in PATH.
 - **Linker permission denied:** The exe is still running. Close it before rebuilding.
-- **Mini map exponent:** The mini map re-renders whenever `multibrot_exp` changes.
-  It uses center (-0.5, 0), view_width 3.5, max_iter 128, and the current exponent.
-  It ignores the user's current palette (intentional — fixed reference).
+- **Mini map exponent:** The mini map re-renders whenever `multibrot_exp`,
+  `multibrot_exp_f`, or `is_slow` changes. For slow fractal types it renders as
+  `MultibroSlow` with the current float exponent; otherwise as Mandelbrot with the
+  integer exponent. Always max_iter 128, palette 7. Clicking the mini map updates
+  `julia_re`/`julia_im` only — it does not switch the active fractal type.
 - **Export filename race:** The filename shown in the dialog is regenerated each
   frame. `exp_saved_name` captures it at the moment Export is clicked — use that
   in the success message, not the live-generated string.
