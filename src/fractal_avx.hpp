@@ -26,3 +26,7 @@ void avx2_multibrot_4(double re0, double scale, double im,
 void avx2_multijulia_4(double re0, double scale, double im,
                         int max_iter, int exp_n,
                         double julia_re, double julia_im, double* out4);
+
+// Mandelbar with integer exponent >= 3 (n=2 uses avx2_mandelbar_4)
+void avx2_mandelbar_multi_4(double re0, double scale, double im,
+                              int max_iter, int exp_n, double* out4);

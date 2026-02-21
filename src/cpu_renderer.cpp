@@ -89,7 +89,11 @@ void CpuRenderer::render_tile(const ViewState& vs, PixelBuffer& buf,
                         avx2_burning_ship_4(re0, scale, im, vs.max_iter, smooth4);
                         break;
                     case FractalType::Mandelbar:
-                        avx2_mandelbar_4(re0, scale, im, vs.max_iter, smooth4);
+                        if (vs.multibrot_exp == 2)
+                            avx2_mandelbar_4(re0, scale, im, vs.max_iter, smooth4);
+                        else
+                            avx2_mandelbar_multi_4(re0, scale, im, vs.max_iter,
+                                                   vs.multibrot_exp, smooth4);
                         break;
                     case FractalType::MultibroSlow:
                         if (slow_int_n == 2)
@@ -137,7 +141,9 @@ void CpuRenderer::render_tile(const ViewState& vs, PixelBuffer& buf,
                     smooth = burning_ship_iter(re, im, vs.max_iter);
                     break;
                 case FractalType::Mandelbar:
-                    smooth = mandelbar_iter(re, im, vs.max_iter);
+                    smooth = (vs.multibrot_exp == 2)
+                        ? mandelbar_iter(re, im, vs.max_iter)
+                        : mandelbar_multi_iter(re, im, vs.max_iter, vs.multibrot_exp);
                     break;
                 case FractalType::MultibroSlow:
                     if (slow_int_n > 0)

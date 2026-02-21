@@ -170,6 +170,33 @@ inline double multijulia_iter(double re, double im, double cr, double ci,
     return static_cast<double>(max_iter);
 }
 
+// z_{n+1} = conj(z)^n + c, z_0 = 0  (Mandelbar, integer exponent >= 3)
+// conj(z)^n = conj(z^n), so: compute z^n via repeated multiply, then negate zi
+inline double mandelbar_multi_iter(double re, double im, int max_iter, int n)
+{
+    double zr = 0.0, zi = 0.0;
+    const double log_n = std::log(static_cast<double>(n));
+    int i = 0;
+    while (i < max_iter) {
+        const double zr2 = zr * zr, zi2 = zi * zi;
+        if (zr2 + zi2 > 4.0) {
+            const double log_zn = std::log(zr2 + zi2) * 0.5;
+            const double nu     = std::log(log_zn / log_n) / log_n;
+            return std::max(0.0, static_cast<double>(i) + 1.0 - nu);
+        }
+        double pr = zr, pi = zi;
+        for (int k = 1; k < n; ++k) {
+            const double new_pr = pr * zr - pi * zi;
+            pi = pr * zi + pi * zr;
+            pr = new_pr;
+        }
+        zr =  pr + re;
+        zi = -pi + im;   // conjugate: negate imaginary part of z^n
+        ++i;
+    }
+    return static_cast<double>(max_iter);
+}
+
 // z_{n+1} = (|Re(z)| + i|Im(z)|)^2 + c
 inline double burning_ship_iter(double re, double im, int max_iter)
 {

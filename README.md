@@ -61,13 +61,14 @@ Exports are saved to the folder the exe is in.
 | Mandelbrot | z² + c | Classic; exponent slider extends to Multibrot |
 | Julia | z² + c (fixed c) | c set via mini map; exponent slider for Multijulia |
 | Burning Ship | (|Re z| + i|Im z|)² + c | |
-| Mandelbar | conj(z)² + c | Tricorn |
+| Mandelbar | conj(z)² + c | Tricorn; exponent slider extends to higher degrees |
 | Multibrot (slow) | z^n + c, real n | Float exponent, any real value |
 | Multijulia (slow) | z^n + c (fixed c), real n | Float exponent + c from mini map |
 
-**Exponent (integer)** — slider 2–8, shown for Mandelbrot and Julia.
-At n=2: standard Mandelbrot / Julia. At n≥3: fast Multibrot / Multijulia
-(AVX2-accelerated via repeated complex multiplication, no trig).
+**Exponent (integer)** — slider 2–8, shown for Mandelbrot, Julia, and Mandelbar.
+At n=2: standard formula. At n≥3: fast AVX2-accelerated path using repeated
+complex multiplication (no trig). Mandelbar at n≥3 computes conj(z)^n + c,
+giving (n+1)-fold rotational symmetry.
 
 **Exponent (float)** — shown for Multibrot (slow) and Multijulia (slow).
 Slider covers −10 to 10; the numeric input below accepts any real value.

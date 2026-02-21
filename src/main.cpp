@@ -349,7 +349,8 @@ int main(int argc, char* argv[])
         }
 
         // --- Exponent ---
-        if (vs.fractal == FractalType::Mandelbrot || vs.fractal == FractalType::Julia) {
+        if (vs.fractal == FractalType::Mandelbrot || vs.fractal == FractalType::Julia ||
+            vs.fractal == FractalType::Mandelbar) {
             ImGui::Spacing();
             ImGui::TextDisabled("EXPONENT");
             ImGui::Separator();

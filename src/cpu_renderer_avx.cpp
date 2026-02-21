@@ -143,7 +143,7 @@ void avx2_mandelbar_4(double re0, double scale, double im,
 // Uses repeated complex multiplication to compute z^n without trig.
 // Smooth coloring uses log(exp_n) as the base instead of log(2).
 // -----------------------------------------------------------------------
-template<bool IsJulia>
+template<bool IsJulia, bool IsMandelbar = false>
 static void avx2_multibrot_kernel(double re0, double scale, double im, int max_iter,
                                    int exp_n, double c_re, double c_im, double* out4)
 {
@@ -162,8 +162,9 @@ static void avx2_multibrot_kernel(double re0, double scale, double im, int max_i
         zi = _mm256_setzero_pd();
     }
 
-    const __m256d four   = _mm256_set1_pd(4.0);
-    const __m256d one    = _mm256_set1_pd(1.0);
+    const __m256d four     = _mm256_set1_pd(4.0);
+    const __m256d one      = _mm256_set1_pd(1.0);
+    const __m256d sign_bit = _mm256_set1_pd(-0.0);  // used by IsMandelbar
 
     __m256d active   = _mm256_castsi256_pd(_mm256_set1_epi64x(-1LL));
     __m256d iters_d  = _mm256_setzero_pd();
@@ -190,6 +191,9 @@ static void avx2_multibrot_kernel(double re0, double scale, double im, int max_i
                        _mm256_mul_pd(pw_i, zr));                   // pw_r*zi + pw_i*zr
             pw_r = new_pr;
         }
+
+        if constexpr (IsMandelbar)
+            pw_i = _mm256_xor_pd(pw_i, sign_bit);  // conj(z^n): negate imag part
 
         __m256d new_zr = _mm256_add_pd(pw_r, cr);
         __m256d new_zi = _mm256_add_pd(pw_i, ci);
@@ -229,4 +233,10 @@ void avx2_multijulia_4(double re0, double scale, double im,
                         double julia_re, double julia_im, double* out4)
 {
     avx2_multibrot_kernel<true>(re0, scale, im, max_iter, exp_n, julia_re, julia_im, out4);
+}
+
+void avx2_mandelbar_multi_4(double re0, double scale, double im,
+                              int max_iter, int exp_n, double* out4)
+{
+    avx2_multibrot_kernel<false, true>(re0, scale, im, max_iter, exp_n, 0.0, 0.0, out4);
 }
