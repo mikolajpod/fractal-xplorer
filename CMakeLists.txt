@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(fractal_xplorer VERSION 1.4 CXX)
+project(fractal_xplorer VERSION 1.5 CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)

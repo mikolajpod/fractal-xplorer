@@ -6,7 +6,7 @@ set -euo pipefail
 export PATH="/c/msys64/mingw64/bin:/c/msys64/usr/bin:$PATH"
 
 NAME="fractal_xplorer"
-VERSION="1.4"
+VERSION="1.5"
 DIST="${NAME}-${VERSION}-win64"
 BUILD_DIR="build"
 ZIP_NAME="${DIST}.zip"

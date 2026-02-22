@@ -910,7 +910,7 @@ int main(int argc, char* argv[])
         }
         if (ImGui::BeginPopupModal("About##dlg", nullptr,
                                    ImGuiWindowFlags_AlwaysAutoResize)) {
-            ImGui::Text("Fractal Xplorer  v1.0");
+            ImGui::Text("Fractal Xplorer  v1.5");
             ImGui::Separator();
             ImGui::Spacing();
             ImGui::Text("A fast, no-nonsense fractal explorer.");
