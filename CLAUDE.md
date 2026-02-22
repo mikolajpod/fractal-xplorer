@@ -81,7 +81,7 @@ Do not change this layout without updating all three output paths.
 |---|---|
 | `view_state.hpp` | `FormulaType` enum + `ViewState` struct + `zoom_display()` + `fractal_name()` + `reset_view_keep_params()` |
 | `renderer.hpp` | `IFractalRenderer` interface, `PixelBuffer` |
-| `fractal.hpp` | Scalar iteration kernels (Mandelbrot, Julia, Burning Ship, Mandelbar, Multibrot, Multijulia) |
+| `fractal.hpp` | Scalar iteration kernels (Mandelbrot, Julia, Burning Ship, Mandelbar, Multibrot, Multijulia, Celtic, Buffalo) |
 | `fractal_avx.hpp` | Declarations for AVX2 entry points |
 | `cpu_renderer_avx.cpp` | AVX2+FMA kernels — compiled with `-O2 -mavx2 -mfma` |
 | `cpu_renderer.hpp/.cpp` | Thread pool tile dispatch, AVX2 runtime detection, `set_thread_count()` |
@@ -117,8 +117,10 @@ The AVX2 path accumulates `iters_d` by adding 1.0 per active lane per iteration
 (not `set1_pd(i+1)`), so `iters_d == i` at escape, matching the scalar formula.
 
 **AVX2 kernel structure** — `cpu_renderer_avx.cpp` contains two templates:
-- `avx2_kernel<IsJulia, IsBurningShip, IsMandelbar>` — for degree-2 formulas;
-  8 public wrappers cover all (formula × julia_mode) combinations; uses FMA squaring
+- `avx2_kernel<IsJulia, IsBurningShip, IsMandelbar, AbsRe, AbsIm>` — for degree-2
+  formulas; 12 public wrappers cover all (formula × julia_mode) combinations;
+  uses FMA squaring for Standard/Mandelbar/BurningShip; Celtic uses `AbsRe=true`,
+  Buffalo uses `AbsRe=true, AbsIm=true` (abs applied to components of z² after squaring)
 - `avx2_multibrot_kernel<IsJulia, IsMandelbar>` — for integer exponent ≥ 2; uses
   repeated complex multiplication (no trig), smooth coloring with `log(exp_n)`;
   covers MultiFast and Mandelbar with n≥3, both in Mandelbrot and Julia mode
@@ -127,10 +129,10 @@ The AVX2 path accumulates `iters_d` by adding 1.0 per active lane per iteration
 `n≥3` dispatches to `avx2_multibrot_4` / `avx2_multijulia_4`.
 
 **Formula + Julia mode** — `ViewState` has two orthogonal dimensions:
-- `FormulaType formula` — which iteration rule to apply (5 values)
+- `FormulaType formula` — which iteration rule to apply (7 values)
 - `bool julia_mode` — Mandelbrot mode (z₀=0, c=pixel) vs Julia mode (z₀=pixel, c=fixed)
 
-This gives 10 combinations without any enum explosion. `julia_re`/`julia_im` hold
+This gives 14 combinations without any enum explosion. `julia_re`/`julia_im` hold
 the fixed *c* parameter used when `julia_mode=true`.
 
 **Default viewport** — `ViewState{}` defaults to center (0, 0), view_width 4.0.
@@ -150,12 +152,14 @@ enum class FormulaType {
     BurningShip = 1,  // (|Re z| + i|Im z|)^2 + c
     Mandelbar   = 2,  // conj(z)^n + c  (integer exp 2-8)
     MultiFast   = 3,  // z^n + c  (integer exp 2-8, AVX2)
-    MultiSlow   = 4,  // z^n + c  (real exp r, scalar)
+    MultiSlow   = 4,  // z^n + c  (real exp, scalar)
+    Celtic      = 5,  // |Re(z^2)| + i Im(z^2) + c
+    Buffalo     = 6,  // |Re(z^2)| + i|Im(z^2)| + c
 };
-constexpr int FORMULA_COUNT = 5;
+constexpr int FORMULA_COUNT = 7;
 ```
 
-Combined with `bool julia_mode` in `ViewState`, this gives 10 render combinations.
+Combined with `bool julia_mode` in `ViewState`, this gives 14 render combinations.
 
 `multibrot_exp` (int, 2–8) is the exponent for Mandelbar and MultiFast.
 `multibrot_exp_f` (double) is the exponent for MultiSlow; any real value is accepted.
@@ -172,10 +176,13 @@ When `multibrot_exp_f` is an exact integer (e.g. 3.0), `render_tile()` detects t
 2. `fractal.hpp` — add scalar `foo_iter(re, im, max_iter)` and
    `foo_julia_iter(re, im, cr, ci, max_iter)` inline functions
 3. `fractal_avx.hpp` — declare `avx2_foo_4()` and `avx2_foo_julia_4()`
-4. `cpu_renderer_avx.cpp` — add `bool IsFoo` template parameter to `avx2_kernel`,
-   add `if constexpr (IsFoo)` branch in the z-update block, add two public wrappers:
-   `avx2_foo_4()` → `avx2_kernel<false, ..., true>(...)` and
-   `avx2_foo_julia_4()` → `avx2_kernel<true, ..., true>(...)`
+4. `cpu_renderer_avx.cpp` — choose one of two approaches:
+   - **Abs-after-squaring variant** (Celtic/Buffalo style): reuse existing `AbsRe`/`AbsIm`
+     template params — just add wrappers with the right `<IsJulia,...,AbsRe,AbsIm>` values
+   - **New z-update rule**: add `bool IsFoo` template parameter to `avx2_kernel`,
+     add `if constexpr (IsFoo)` branch in the z-update block, add two public wrappers:
+     `avx2_foo_4()` → `avx2_kernel<false, ..., true>(...)` and
+     `avx2_foo_julia_4()` → `avx2_kernel<true, ..., true>(...)`
 5. `cpu_renderer.cpp` — add `case FormulaType::Foo:` to both the AVX2 switch and
    the scalar switch inside `render_tile()`, dispatch on `vs.julia_mode`
 6. `main.cpp` — add the name string to the `names[]` array in the formula Combo

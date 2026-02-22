@@ -132,6 +132,20 @@ void CpuRenderer::render_tile(const ViewState& vs, PixelBuffer& buf,
                                                  slow_int_n, smooth4);
                         }
                         break;
+                    case FormulaType::Celtic:
+                        if (vs.julia_mode)
+                            avx2_celtic_julia_4(re0, scale, im, vs.max_iter,
+                                                vs.julia_re, vs.julia_im, smooth4);
+                        else
+                            avx2_celtic_4(re0, scale, im, vs.max_iter, smooth4);
+                        break;
+                    case FormulaType::Buffalo:
+                        if (vs.julia_mode)
+                            avx2_buffalo_julia_4(re0, scale, im, vs.max_iter,
+                                                 vs.julia_re, vs.julia_im, smooth4);
+                        else
+                            avx2_buffalo_4(re0, scale, im, vs.max_iter, smooth4);
+                        break;
                     default:
                         avx2_mandelbrot_4(re0, scale, im, vs.max_iter, smooth4);
                         break;
@@ -196,6 +210,16 @@ void CpuRenderer::render_tile(const ViewState& vs, PixelBuffer& buf,
                                                    vs.max_iter, vs.multibrot_exp_f)
                             : multibrot_slow_iter(re, im, vs.max_iter, vs.multibrot_exp_f);
                     }
+                    break;
+                case FormulaType::Celtic:
+                    smooth = vs.julia_mode
+                        ? celtic_julia_iter(re, im, vs.julia_re, vs.julia_im, vs.max_iter)
+                        : celtic_iter(re, im, vs.max_iter);
+                    break;
+                case FormulaType::Buffalo:
+                    smooth = vs.julia_mode
+                        ? buffalo_julia_iter(re, im, vs.julia_re, vs.julia_im, vs.max_iter)
+                        : buffalo_iter(re, im, vs.max_iter);
                     break;
                 default:
                     smooth = mandelbrot_iter(re, im, vs.max_iter);

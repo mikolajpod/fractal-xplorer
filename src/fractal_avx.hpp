@@ -43,3 +43,15 @@ void avx2_mandelbar_julia_4(double re0, double scale, double im,
 void avx2_mandelbar_multi_julia_4(double re0, double scale, double im,
                                    int max_iter, int exp_n,
                                    double julia_re, double julia_im, double* out4);
+
+// Celtic: |Re(z^2)| + i Im(z^2) + c
+void avx2_celtic_4(double re0, double scale, double im,
+                   int max_iter, double* out4);
+void avx2_celtic_julia_4(double re0, double scale, double im,
+                          int max_iter, double julia_re, double julia_im, double* out4);
+
+// Buffalo: |Re(z^2)| + i|Im(z^2)| + c
+void avx2_buffalo_4(double re0, double scale, double im,
+                    int max_iter, double* out4);
+void avx2_buffalo_julia_4(double re0, double scale, double im,
+                           int max_iter, double julia_re, double julia_im, double* out4);

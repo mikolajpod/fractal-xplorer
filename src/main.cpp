@@ -297,6 +297,8 @@ int main(int argc, char* argv[])
                 "Mandelbar  (conj(z)^n + c)",
                 "Multibrot  (z^n + c)",
                 "Multibrot  (z^r + c, slow)",
+                "Celtic  (|Re(z^2)| + c)",
+                "Buffalo  (|Re(z^2)| + i|Im(z^2)| + c)",
             };
             int f = static_cast<int>(vs.formula);
             ImGui::SetNextItemWidth(-1.0f);

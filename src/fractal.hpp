@@ -259,6 +259,86 @@ inline double mandelbar_julia_iter(double re, double im, double cr, double ci, i
     return static_cast<double>(max_iter);
 }
 
+// z_{n+1} = |Re(z^2)| + i Im(z^2) + c  (Celtic)
+inline double celtic_iter(double re, double im, int max_iter)
+{
+    double zr = 0.0, zi = 0.0;
+    int i = 0;
+    while (i < max_iter) {
+        double zr2 = zr * zr, zi2 = zi * zi;
+        if (zr2 + zi2 > 4.0) {
+            double log_zn = std::log(zr2 + zi2) * 0.5;
+            double nu     = std::log(log_zn / std::log(2.0)) / std::log(2.0);
+            return std::max(0.0, static_cast<double>(i) + 1.0 - nu);
+        }
+        double new_zr = std::abs(zr2 - zi2) + re;
+        zi = 2.0 * zr * zi + im;
+        zr = new_zr;
+        ++i;
+    }
+    return static_cast<double>(max_iter);
+}
+
+// z_{n+1} = |Re(z^2)| + i Im(z^2) + c, z_0 = pixel  (Celtic Julia)
+inline double celtic_julia_iter(double re, double im, double cr, double ci, int max_iter)
+{
+    double zr = re, zi = im;
+    int i = 0;
+    while (i < max_iter) {
+        double zr2 = zr * zr, zi2 = zi * zi;
+        if (zr2 + zi2 > 4.0) {
+            double log_zn = std::log(zr2 + zi2) * 0.5;
+            double nu     = std::log(log_zn / std::log(2.0)) / std::log(2.0);
+            return std::max(0.0, static_cast<double>(i) + 1.0 - nu);
+        }
+        double new_zr = std::abs(zr2 - zi2) + cr;
+        zi = 2.0 * zr * zi + ci;
+        zr = new_zr;
+        ++i;
+    }
+    return static_cast<double>(max_iter);
+}
+
+// z_{n+1} = |Re(z^2)| + i|Im(z^2)| + c  (Buffalo)
+inline double buffalo_iter(double re, double im, int max_iter)
+{
+    double zr = 0.0, zi = 0.0;
+    int i = 0;
+    while (i < max_iter) {
+        double zr2 = zr * zr, zi2 = zi * zi;
+        if (zr2 + zi2 > 4.0) {
+            double log_zn = std::log(zr2 + zi2) * 0.5;
+            double nu     = std::log(log_zn / std::log(2.0)) / std::log(2.0);
+            return std::max(0.0, static_cast<double>(i) + 1.0 - nu);
+        }
+        double new_zr = std::abs(zr2 - zi2) + re;
+        zi = std::abs(2.0 * zr * zi) + im;
+        zr = new_zr;
+        ++i;
+    }
+    return static_cast<double>(max_iter);
+}
+
+// z_{n+1} = |Re(z^2)| + i|Im(z^2)| + c, z_0 = pixel  (Buffalo Julia)
+inline double buffalo_julia_iter(double re, double im, double cr, double ci, int max_iter)
+{
+    double zr = re, zi = im;
+    int i = 0;
+    while (i < max_iter) {
+        double zr2 = zr * zr, zi2 = zi * zi;
+        if (zr2 + zi2 > 4.0) {
+            double log_zn = std::log(zr2 + zi2) * 0.5;
+            double nu     = std::log(log_zn / std::log(2.0)) / std::log(2.0);
+            return std::max(0.0, static_cast<double>(i) + 1.0 - nu);
+        }
+        double new_zr = std::abs(zr2 - zi2) + cr;
+        zi = std::abs(2.0 * zr * zi) + ci;
+        zr = new_zr;
+        ++i;
+    }
+    return static_cast<double>(max_iter);
+}
+
 // z_{n+1} = conj(z)^n + c, z_0 = pixel  (Mandelbar Julia, integer exp >= 3)
 inline double mandelbar_multi_julia_iter(double re, double im, double cr, double ci,
                                           int max_iter, int n)

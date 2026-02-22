@@ -6,8 +6,10 @@ enum class FormulaType {
     Mandelbar   = 2,  // conj(z)^n + c  (integer exp 2-8)
     MultiFast   = 3,  // z^n + c  (integer exp 2-8, AVX2)
     MultiSlow   = 4,  // z^n + c  (real exp, scalar)
+    Celtic      = 5,  // |Re(z^2)| + i Im(z^2) + c
+    Buffalo     = 6,  // |Re(z^2)| + i|Im(z^2)| + c
 };
-constexpr int FORMULA_COUNT = 5;
+constexpr int FORMULA_COUNT = 7;
 
 struct ViewState {
     double      center_x        =  0.0;
@@ -43,6 +45,10 @@ inline const char* fractal_name(const ViewState& vs)
             return vs.julia_mode ? "Multijulia"         : "Multibrot";
         case FormulaType::MultiSlow:
             return vs.julia_mode ? "Multijulia (slow)"  : "Multibrot (slow)";
+        case FormulaType::Celtic:
+            return vs.julia_mode ? "Celtic Julia"       : "Celtic";
+        case FormulaType::Buffalo:
+            return vs.julia_mode ? "Buffalo Julia"      : "Buffalo";
     }
     return "Unknown";
 }

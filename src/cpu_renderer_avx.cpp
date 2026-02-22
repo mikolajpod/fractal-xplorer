@@ -15,7 +15,8 @@
 //    matching the scalar formula: smooth = iter + 1 - nu
 //  - z update uses FMA (_mm256_fmadd_pd / _mm256_fnmadd_pd)
 // -----------------------------------------------------------------------
-template<bool IsJulia, bool IsBurningShip, bool IsMandelbar>
+template<bool IsJulia, bool IsBurningShip, bool IsMandelbar,
+         bool AbsRe = false, bool AbsIm = false>
 static void avx2_kernel(double re0, double scale, double im, int max_iter,
                         double c_re, double c_im, double* out4)
 {
@@ -63,7 +64,7 @@ static void avx2_kernel(double re0, double scale, double im, int max_iter,
 
         if (_mm256_movemask_pd(active) == 0) break;
 
-        // Update z using FMA (2 instructions instead of 4)
+        // Update z
         __m256d new_zr, new_zi;
         if constexpr (IsBurningShip) {
             const __m256d azr = _mm256_andnot_pd(sign_bit, zr);  // |zr|
@@ -71,6 +72,14 @@ static void avx2_kernel(double re0, double scale, double im, int max_iter,
             new_zr = _mm256_fmadd_pd (zr, zr,
                          _mm256_fnmadd_pd(zi, zi, cr));     // zr^2 - zi^2 + cr
             new_zi = _mm256_fmadd_pd (_mm256_add_pd(azr, azr), azi, ci);  // 2|zr||zi| + ci
+        } else if constexpr (AbsRe || AbsIm) {
+            // Celtic (AbsRe only) / Buffalo (AbsRe+AbsIm): abs applied after squaring
+            const __m256d re_raw = _mm256_sub_pd(zr2, zi2);                       // zr^2 - zi^2
+            const __m256d im_raw = _mm256_mul_pd(_mm256_add_pd(zr, zr), zi);      // 2*zr*zi
+            new_zr = _mm256_add_pd(
+                AbsRe ? _mm256_andnot_pd(sign_bit, re_raw) : re_raw, cr);
+            new_zi = _mm256_add_pd(
+                AbsIm ? _mm256_andnot_pd(sign_bit, im_raw) : im_raw, ci);
         } else {
             new_zr = _mm256_fmadd_pd (zr, zr,
                          _mm256_fnmadd_pd(zi, zi, cr));     // zr^2 - zi^2 + cr
@@ -260,4 +269,32 @@ void avx2_mandelbar_multi_julia_4(double re0, double scale, double im,
                                    double julia_re, double julia_im, double* out4)
 {
     avx2_multibrot_kernel<true, true>(re0, scale, im, max_iter, exp_n, julia_re, julia_im, out4);
+}
+
+// -----------------------------------------------------------------------
+// Celtic and Buffalo entry points
+// -----------------------------------------------------------------------
+
+void avx2_celtic_4(double re0, double scale, double im,
+                   int max_iter, double* out4)
+{
+    avx2_kernel<false, false, false, true, false>(re0, scale, im, max_iter, 0.0, 0.0, out4);
+}
+
+void avx2_celtic_julia_4(double re0, double scale, double im,
+                          int max_iter, double julia_re, double julia_im, double* out4)
+{
+    avx2_kernel<true, false, false, true, false>(re0, scale, im, max_iter, julia_re, julia_im, out4);
+}
+
+void avx2_buffalo_4(double re0, double scale, double im,
+                    int max_iter, double* out4)
+{
+    avx2_kernel<false, false, false, true, true>(re0, scale, im, max_iter, 0.0, 0.0, out4);
+}
+
+void avx2_buffalo_julia_4(double re0, double scale, double im,
+                           int max_iter, double julia_re, double julia_im, double* out4)
+{
+    avx2_kernel<true, false, false, true, true>(re0, scale, im, max_iter, julia_re, julia_im, out4);
 }
