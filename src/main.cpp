@@ -214,7 +214,7 @@ int main(int argc, char* argv[])
             }
             if (ImGui::BeginMenu("View")) {
                 if (ImGui::MenuItem("Reset View", "R")) {
-                    reset_view_keep_params(vs, vs.fractal);
+                    reset_view_keep_params(vs, vs.formula, vs.julia_mode);
                     dirty = true;
                 }
                 ImGui::EndMenu();
@@ -237,7 +237,7 @@ int main(int argc, char* argv[])
             exp_msg.clear();
         }
         if (ImGui::IsKeyPressed(ImGuiKey_R)) {
-            reset_view_keep_params(vs, vs.fractal);
+            reset_view_keep_params(vs, vs.formula, vs.julia_mode);
             dirty = true;
         }
         if (ImGui::IsKeyPressed(ImGuiKey_F1))
@@ -287,38 +287,39 @@ int main(int argc, char* argv[])
             ImGuiWindowFlags_NoMove                |
             ImGuiWindowFlags_NoBringToFrontOnFocus);
 
-        // --- Fractal selector ---
-        ImGui::TextDisabled("FRACTAL");
+        // --- Formula selector ---
+        ImGui::TextDisabled("FORMULA");
         ImGui::Separator();
         {
             static const char* names[] = {
-                "Mandelbrot", "Julia", "Burning Ship",
-                "Mandelbar", "Multibrot (slow)", "Multijulia (slow)"
+                "z^2 (standard)", "Burning Ship", "Mandelbar",
+                "z^n (fast)", "z^n (slow)"
             };
-            int ft = static_cast<int>(vs.fractal);
+            int f = static_cast<int>(vs.formula);
             ImGui::SetNextItemWidth(-1.0f);
-            if (ImGui::Combo("##fractal", &ft, names, FRACTAL_COUNT)) {
-                reset_view_keep_params(vs, static_cast<FractalType>(ft));
+            if (ImGui::Combo("##formula", &f, names, FORMULA_COUNT)) {
+                reset_view_keep_params(vs, static_cast<FormulaType>(f), vs.julia_mode);
                 dirty = true;
             }
             if (ImGui::IsItemHovered() && io.MouseWheel != 0.0f) {
-                int nft = (ft + (io.MouseWheel < 0.0f ? 1 : -1) + FRACTAL_COUNT) % FRACTAL_COUNT;
-                reset_view_keep_params(vs, static_cast<FractalType>(nft));
+                int nf = (f + (io.MouseWheel < 0.0f ? 1 : -1) + FORMULA_COUNT) % FORMULA_COUNT;
+                reset_view_keep_params(vs, static_cast<FormulaType>(nf), vs.julia_mode);
                 dirty = true;
             }
+            ImGui::Spacing();
+            if (ImGui::Checkbox("Julia mode", &vs.julia_mode))
+                dirty = true;
         }
 
         // --- Exponent ---
-        if (vs.fractal == FractalType::Mandelbrot || vs.fractal == FractalType::Julia ||
-            vs.fractal == FractalType::Mandelbar) {
+        if (vs.formula == FormulaType::Mandelbar || vs.formula == FormulaType::MultiFast) {
             ImGui::Spacing();
             ImGui::TextDisabled("EXPONENT");
             ImGui::Separator();
             ImGui::SetNextItemWidth(-1.0f);
             if (ImGui::SliderInt("##mexp", &vs.multibrot_exp, 2, 8))
                 dirty = true;
-        } else if (vs.fractal == FractalType::MultibroSlow ||
-                   vs.fractal == FractalType::MultijuliaSlow) {
+        } else if (vs.formula == FormulaType::MultiSlow) {
             ImGui::Spacing();
             ImGui::TextDisabled("EXPONENT (float)");
             ImGui::Separator();
@@ -378,32 +379,29 @@ int main(int argc, char* argv[])
         // Complex units per display pixel in the mini map
         const float map_scale = 4.0f / map_w;
 
-        // Re-render mini map when exponent or slow-variant changes
-        static int    mini_last_exp   = 2;
-        static double mini_last_exp_f = 3.0;
-        static bool   mini_last_slow  = false;
-        const bool    is_slow = (vs.fractal == FractalType::MultibroSlow ||
-                                 vs.fractal == FractalType::MultijuliaSlow);
-        if (mini_last_exp   != vs.multibrot_exp   ||
-            mini_last_exp_f != vs.multibrot_exp_f ||
-            mini_last_slow  != is_slow) {
-            mini_dirty      = true;
-            mini_last_exp   = vs.multibrot_exp;
-            mini_last_exp_f = vs.multibrot_exp_f;
-            mini_last_slow  = is_slow;
+        // Re-render mini map when formula or exponent changes
+        static FormulaType mini_last_formula  = FormulaType::Standard;
+        static int         mini_last_exp      = 2;
+        static double      mini_last_exp_f    = 3.0;
+        if (mini_last_formula != vs.formula         ||
+            mini_last_exp     != vs.multibrot_exp   ||
+            mini_last_exp_f   != vs.multibrot_exp_f) {
+            mini_dirty          = true;
+            mini_last_formula   = vs.formula;
+            mini_last_exp       = vs.multibrot_exp;
+            mini_last_exp_f     = vs.multibrot_exp_f;
         }
 
-        // Render mini map: symmetric -2..2 view, matching current exponent
+        // Render mini map: Mandelbrot-mode of current formula, symmetric -2..2 view
         if (mini_dirty && map_iw > 0 && map_ih > 0) {
             ViewState mini_vs;
             // center_x/y = 0, view_width = 4.0 — from struct defaults
-            mini_vs.max_iter = 128;
-            if (is_slow) {
-                mini_vs.fractal        = FractalType::MultibroSlow;
-                mini_vs.multibrot_exp_f = vs.multibrot_exp_f;
-            } else {
-                mini_vs.multibrot_exp = vs.multibrot_exp;
-            }
+            mini_vs.formula         = vs.formula;
+            mini_vs.julia_mode      = false;   // always Mandelbrot-mode (parameter space)
+            mini_vs.max_iter        = 128;
+            mini_vs.palette         = 7;
+            mini_vs.multibrot_exp   = vs.multibrot_exp;
+            mini_vs.multibrot_exp_f = vs.multibrot_exp_f;
             mini_pbuf.resize(map_iw, map_ih);
             renderer.render(mini_vs, mini_pbuf);
             g_mini_tex.ensure(map_iw, map_ih);
@@ -874,7 +872,7 @@ int main(int argc, char* argv[])
             ImGui::Separator();
             ImGui::Spacing();
             ImGui::Text("A fast, no-nonsense fractal explorer.");
-            ImGui::Text("Mandelbrot  |  Julia  |  Burning Ship");
+            ImGui::Text("z^2  |  Burning Ship  |  Mandelbar  |  z^n  |  Julia mode for all");
             ImGui::Spacing();
             ImGui::TextDisabled("AVX2 + multithreaded tile rendering");
             ImGui::TextDisabled("8 color palettes with offset cycling");

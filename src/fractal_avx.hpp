@@ -30,3 +30,16 @@ void avx2_multijulia_4(double re0, double scale, double im,
 // Mandelbar with integer exponent >= 3 (n=2 uses avx2_mandelbar_4)
 void avx2_mandelbar_multi_4(double re0, double scale, double im,
                               int max_iter, int exp_n, double* out4);
+
+// Julia variants for Burning Ship and Mandelbar
+void avx2_burning_ship_julia_4(double re0, double scale, double im,
+                                int max_iter, double julia_re, double julia_im,
+                                double* out4);
+
+void avx2_mandelbar_julia_4(double re0, double scale, double im,
+                              int max_iter, double julia_re, double julia_im,
+                              double* out4);
+
+void avx2_mandelbar_multi_julia_4(double re0, double scale, double im,
+                                   int max_iter, int exp_n,
+                                   double julia_re, double julia_im, double* out4);

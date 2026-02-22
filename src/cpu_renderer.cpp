@@ -41,11 +41,10 @@ void CpuRenderer::render_tile(const ViewState& vs, PixelBuffer& buf,
     const double x0    = vs.center_x - W * 0.5 * scale;
     const double y0    = vs.center_y - H * 0.5 * scale;
 
-    // If the float exponent is effectively an integer, use the fast integer path
-    // (AVX2 repeated-multiply, no trig). Covers the common case of e.g. 3.0, 4.0.
+    // For MultiSlow: if float exponent is effectively an integer, promote to
+    // the fast integer path (AVX2 repeated-multiply, no trig).
     const int slow_int_n = [&]() -> int {
-        if (vs.fractal != FractalType::MultibroSlow &&
-            vs.fractal != FractalType::MultijuliaSlow)
+        if (vs.formula != FormulaType::MultiSlow)
             return 0;
         const int n = static_cast<int>(std::round(vs.multibrot_exp_f));
         return (n >= 2 && std::abs(vs.multibrot_exp_f - n) < 1e-9) ? n : 0;
@@ -57,59 +56,81 @@ void CpuRenderer::render_tile(const ViewState& vs, PixelBuffer& buf,
         int          px  = tx;
         const int    end = std::min(tx + tw, W);
 
-        // --- AVX2 path: 4 pixels per iteration ---
-        // Slow float-exp fractals bypass AVX2 unless the exponent is an integer.
+        // AVX2 path: 4 pixels per iteration.
+        // MultiSlow bypasses AVX2 unless the exponent is an integer.
         const bool use_avx2_here = use_avx2 &&
-            (vs.fractal != FractalType::MultibroSlow &&
-             vs.fractal != FractalType::MultijuliaSlow ||
-             slow_int_n > 0);
+            (vs.formula != FormulaType::MultiSlow || slow_int_n > 0);
+
         if (use_avx2_here) {
             for (; px + 4 <= end; px += 4) {
                 const double re0 = x0 + px * scale;
                 double smooth4[4];
 
-                switch (vs.fractal) {
-                    case FractalType::Mandelbrot:
-                        if (vs.multibrot_exp == 2)
-                            avx2_mandelbrot_4(re0, scale, im, vs.max_iter, smooth4);
-                        else
-                            avx2_multibrot_4(re0, scale, im, vs.max_iter,
-                                             vs.multibrot_exp, smooth4);
-                        break;
-                    case FractalType::Julia:
-                        if (vs.multibrot_exp == 2)
+                switch (vs.formula) {
+                    case FormulaType::Standard:
+                        if (vs.julia_mode)
                             avx2_julia_4(re0, scale, im, vs.max_iter,
                                          vs.julia_re, vs.julia_im, smooth4);
                         else
-                            avx2_multijulia_4(re0, scale, im, vs.max_iter,
-                                              vs.multibrot_exp,
-                                              vs.julia_re, vs.julia_im, smooth4);
-                        break;
-                    case FractalType::BurningShip:
-                        avx2_burning_ship_4(re0, scale, im, vs.max_iter, smooth4);
-                        break;
-                    case FractalType::Mandelbar:
-                        if (vs.multibrot_exp == 2)
-                            avx2_mandelbar_4(re0, scale, im, vs.max_iter, smooth4);
-                        else
-                            avx2_mandelbar_multi_4(re0, scale, im, vs.max_iter,
-                                                   vs.multibrot_exp, smooth4);
-                        break;
-                    case FractalType::MultibroSlow:
-                        if (slow_int_n == 2)
                             avx2_mandelbrot_4(re0, scale, im, vs.max_iter, smooth4);
-                        else
-                            avx2_multibrot_4(re0, scale, im, vs.max_iter,
-                                             slow_int_n, smooth4);
                         break;
-                    case FractalType::MultijuliaSlow:
-                        if (slow_int_n == 2)
-                            avx2_julia_4(re0, scale, im, vs.max_iter,
-                                         vs.julia_re, vs.julia_im, smooth4);
+                    case FormulaType::BurningShip:
+                        if (vs.julia_mode)
+                            avx2_burning_ship_julia_4(re0, scale, im, vs.max_iter,
+                                                      vs.julia_re, vs.julia_im, smooth4);
                         else
-                            avx2_multijulia_4(re0, scale, im, vs.max_iter,
-                                              slow_int_n,
-                                              vs.julia_re, vs.julia_im, smooth4);
+                            avx2_burning_ship_4(re0, scale, im, vs.max_iter, smooth4);
+                        break;
+                    case FormulaType::Mandelbar:
+                        if (vs.julia_mode) {
+                            if (vs.multibrot_exp == 2)
+                                avx2_mandelbar_julia_4(re0, scale, im, vs.max_iter,
+                                                       vs.julia_re, vs.julia_im, smooth4);
+                            else
+                                avx2_mandelbar_multi_julia_4(re0, scale, im, vs.max_iter,
+                                                              vs.multibrot_exp,
+                                                              vs.julia_re, vs.julia_im, smooth4);
+                        } else {
+                            if (vs.multibrot_exp == 2)
+                                avx2_mandelbar_4(re0, scale, im, vs.max_iter, smooth4);
+                            else
+                                avx2_mandelbar_multi_4(re0, scale, im, vs.max_iter,
+                                                       vs.multibrot_exp, smooth4);
+                        }
+                        break;
+                    case FormulaType::MultiFast:
+                        if (vs.julia_mode) {
+                            if (vs.multibrot_exp == 2)
+                                avx2_julia_4(re0, scale, im, vs.max_iter,
+                                             vs.julia_re, vs.julia_im, smooth4);
+                            else
+                                avx2_multijulia_4(re0, scale, im, vs.max_iter,
+                                                  vs.multibrot_exp,
+                                                  vs.julia_re, vs.julia_im, smooth4);
+                        } else {
+                            if (vs.multibrot_exp == 2)
+                                avx2_mandelbrot_4(re0, scale, im, vs.max_iter, smooth4);
+                            else
+                                avx2_multibrot_4(re0, scale, im, vs.max_iter,
+                                                 vs.multibrot_exp, smooth4);
+                        }
+                        break;
+                    case FormulaType::MultiSlow:
+                        if (vs.julia_mode) {
+                            if (slow_int_n == 2)
+                                avx2_julia_4(re0, scale, im, vs.max_iter,
+                                             vs.julia_re, vs.julia_im, smooth4);
+                            else
+                                avx2_multijulia_4(re0, scale, im, vs.max_iter,
+                                                  slow_int_n,
+                                                  vs.julia_re, vs.julia_im, smooth4);
+                        } else {
+                            if (slow_int_n == 2)
+                                avx2_mandelbrot_4(re0, scale, im, vs.max_iter, smooth4);
+                            else
+                                avx2_multibrot_4(re0, scale, im, vs.max_iter,
+                                                 slow_int_n, smooth4);
+                        }
                         break;
                     default:
                         avx2_mandelbrot_4(re0, scale, im, vs.max_iter, smooth4);
@@ -121,48 +142,60 @@ void CpuRenderer::render_tile(const ViewState& vs, PixelBuffer& buf,
             }
         }
 
-        // --- Scalar path: remainder pixels (or full row if no AVX2) ---
+        // Scalar path: remainder pixels (or full row if no AVX2)
         for (; px < end; ++px) {
             const double re = x0 + px * scale;
             double smooth;
-            switch (vs.fractal) {
-                case FractalType::Mandelbrot:
-                    smooth = (vs.multibrot_exp == 2)
-                        ? mandelbrot_iter(re, im, vs.max_iter)
-                        : multibrot_iter(re, im, vs.max_iter, vs.multibrot_exp);
-                    break;
-                case FractalType::Julia:
-                    smooth = (vs.multibrot_exp == 2)
+            switch (vs.formula) {
+                case FormulaType::Standard:
+                    smooth = vs.julia_mode
                         ? julia_iter(re, im, vs.julia_re, vs.julia_im, vs.max_iter)
-                        : multijulia_iter(re, im, vs.julia_re, vs.julia_im,
-                                          vs.max_iter, vs.multibrot_exp);
+                        : mandelbrot_iter(re, im, vs.max_iter);
                     break;
-                case FractalType::BurningShip:
-                    smooth = burning_ship_iter(re, im, vs.max_iter);
+                case FormulaType::BurningShip:
+                    smooth = vs.julia_mode
+                        ? burning_ship_julia_iter(re, im, vs.julia_re, vs.julia_im, vs.max_iter)
+                        : burning_ship_iter(re, im, vs.max_iter);
                     break;
-                case FractalType::Mandelbar:
-                    smooth = (vs.multibrot_exp == 2)
-                        ? mandelbar_iter(re, im, vs.max_iter)
-                        : mandelbar_multi_iter(re, im, vs.max_iter, vs.multibrot_exp);
-                    break;
-                case FractalType::MultibroSlow:
-                    if (slow_int_n > 0)
-                        smooth = (slow_int_n == 2)
-                            ? mandelbrot_iter(re, im, vs.max_iter)
-                            : multibrot_iter(re, im, vs.max_iter, slow_int_n);
+                case FormulaType::Mandelbar:
+                    if (vs.julia_mode)
+                        smooth = (vs.multibrot_exp == 2)
+                            ? mandelbar_julia_iter(re, im, vs.julia_re, vs.julia_im, vs.max_iter)
+                            : mandelbar_multi_julia_iter(re, im, vs.julia_re, vs.julia_im,
+                                                         vs.max_iter, vs.multibrot_exp);
                     else
-                        smooth = multibrot_slow_iter(re, im, vs.max_iter,
-                                                     vs.multibrot_exp_f);
+                        smooth = (vs.multibrot_exp == 2)
+                            ? mandelbar_iter(re, im, vs.max_iter)
+                            : mandelbar_multi_iter(re, im, vs.max_iter, vs.multibrot_exp);
                     break;
-                case FractalType::MultijuliaSlow:
-                    if (slow_int_n > 0)
-                        smooth = (slow_int_n == 2)
+                case FormulaType::MultiFast:
+                    if (vs.julia_mode)
+                        smooth = (vs.multibrot_exp == 2)
                             ? julia_iter(re, im, vs.julia_re, vs.julia_im, vs.max_iter)
                             : multijulia_iter(re, im, vs.julia_re, vs.julia_im,
-                                              vs.max_iter, slow_int_n);
+                                              vs.max_iter, vs.multibrot_exp);
                     else
-                        smooth = multijulia_slow_iter(re, im, vs.julia_re, vs.julia_im,
-                                                      vs.max_iter, vs.multibrot_exp_f);
+                        smooth = (vs.multibrot_exp == 2)
+                            ? mandelbrot_iter(re, im, vs.max_iter)
+                            : multibrot_iter(re, im, vs.max_iter, vs.multibrot_exp);
+                    break;
+                case FormulaType::MultiSlow:
+                    if (slow_int_n > 0) {
+                        if (vs.julia_mode)
+                            smooth = (slow_int_n == 2)
+                                ? julia_iter(re, im, vs.julia_re, vs.julia_im, vs.max_iter)
+                                : multijulia_iter(re, im, vs.julia_re, vs.julia_im,
+                                                  vs.max_iter, slow_int_n);
+                        else
+                            smooth = (slow_int_n == 2)
+                                ? mandelbrot_iter(re, im, vs.max_iter)
+                                : multibrot_iter(re, im, vs.max_iter, slow_int_n);
+                    } else {
+                        smooth = vs.julia_mode
+                            ? multijulia_slow_iter(re, im, vs.julia_re, vs.julia_im,
+                                                   vs.max_iter, vs.multibrot_exp_f)
+                            : multibrot_slow_iter(re, im, vs.max_iter, vs.multibrot_exp_f);
+                    }
                     break;
                 default:
                     smooth = mandelbrot_iter(re, im, vs.max_iter);

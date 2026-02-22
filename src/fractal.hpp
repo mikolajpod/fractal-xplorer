@@ -217,3 +217,71 @@ inline double burning_ship_iter(double re, double im, int max_iter)
     }
     return static_cast<double>(max_iter);
 }
+
+// z_{n+1} = (|Re(z)| + i|Im(z)|)^2 + c, z_0 = pixel  (Burning Ship Julia)
+inline double burning_ship_julia_iter(double re, double im, double cr, double ci, int max_iter)
+{
+    double zr = re, zi = im;
+    int i = 0;
+    while (i < max_iter) {
+        double zr2 = zr * zr, zi2 = zi * zi;
+        if (zr2 + zi2 > 4.0) {
+            double log_zn = std::log(zr2 + zi2) * 0.5;
+            double nu     = std::log(log_zn / std::log(2.0)) / std::log(2.0);
+            return std::max(0.0, static_cast<double>(i) + 1.0 - nu);
+        }
+        double new_zr = zr2 - zi2 + cr;
+        double new_zi = 2.0 * std::abs(zr) * std::abs(zi) + ci;
+        zr = new_zr;
+        zi = new_zi;
+        ++i;
+    }
+    return static_cast<double>(max_iter);
+}
+
+// z_{n+1} = conj(z)^2 + c, z_0 = pixel  (Mandelbar Julia)
+inline double mandelbar_julia_iter(double re, double im, double cr, double ci, int max_iter)
+{
+    double zr = re, zi = im;
+    int i = 0;
+    while (i < max_iter) {
+        double zr2 = zr * zr, zi2 = zi * zi;
+        if (zr2 + zi2 > 4.0) {
+            double log_zn = std::log(zr2 + zi2) * 0.5;
+            double nu     = std::log(log_zn / std::log(2.0)) / std::log(2.0);
+            return std::max(0.0, static_cast<double>(i) + 1.0 - nu);
+        }
+        double new_zr =  zr2 - zi2 + cr;
+        zi            = -2.0 * zr * zi + ci;  // conjugate: negate zi term
+        zr = new_zr;
+        ++i;
+    }
+    return static_cast<double>(max_iter);
+}
+
+// z_{n+1} = conj(z)^n + c, z_0 = pixel  (Mandelbar Julia, integer exp >= 3)
+inline double mandelbar_multi_julia_iter(double re, double im, double cr, double ci,
+                                          int max_iter, int n)
+{
+    double zr = re, zi = im;
+    const double log_n = std::log(static_cast<double>(n));
+    int i = 0;
+    while (i < max_iter) {
+        const double zr2 = zr * zr, zi2 = zi * zi;
+        if (zr2 + zi2 > 4.0) {
+            const double log_zn = std::log(zr2 + zi2) * 0.5;
+            const double nu     = std::log(log_zn / log_n) / log_n;
+            return std::max(0.0, static_cast<double>(i) + 1.0 - nu);
+        }
+        double pr = zr, pi = zi;
+        for (int k = 1; k < n; ++k) {
+            const double new_pr = pr * zr - pi * zi;
+            pi = pr * zi + pi * zr;
+            pr = new_pr;
+        }
+        zr =  pr + cr;
+        zi = -pi + ci;  // conjugate: negate imaginary part of z^n
+        ++i;
+    }
+    return static_cast<double>(max_iter);
+}

@@ -1,27 +1,27 @@
 #pragma once
 
-enum class FractalType {
-    Mandelbrot     = 0,  // fast; multibrot_exp>2 => fast Multibrot (AVX2)
-    Julia          = 1,  // fast; multibrot_exp>2 => fast Multijulia (AVX2)
-    BurningShip    = 2,
-    Mandelbar      = 3,
-    MultibroSlow   = 4,  // float exponent, scalar only
-    MultijuliaSlow = 5,  // float exponent + fixed c, scalar only
+enum class FormulaType {
+    Standard    = 0,  // z^2 + c  (always degree 2, no exponent slider)
+    BurningShip = 1,  // (|Re z| + i|Im z|)^2 + c
+    Mandelbar   = 2,  // conj(z)^n + c  (integer exp 2-8)
+    MultiFast   = 3,  // z^n + c  (integer exp 2-8, AVX2)
+    MultiSlow   = 4,  // z^n + c  (real exp, scalar)
 };
-constexpr int FRACTAL_COUNT = 6;
+constexpr int FORMULA_COUNT = 5;
 
 struct ViewState {
     double      center_x        =  0.0;
     double      center_y        =  0.0;
     double      view_width      =  4.0;  // width of viewport in complex-plane units
     int         max_iter        =  256;
-    FractalType fractal         =  FractalType::Mandelbrot;
+    FormulaType formula         =  FormulaType::Standard;
+    bool        julia_mode      =  false;
     double      julia_re        = -0.7;
     double      julia_im        =  0.27015;
     int         palette         =  7;    // Classic Ultra
     int         pal_offset      =  0;
-    int         multibrot_exp   =  2;    // integer exponent for Mandelbrot/Julia fast path (2-8)
-    double      multibrot_exp_f =  3.0;  // float exponent for slow path
+    int         multibrot_exp   =  2;    // integer exponent for Mandelbar/MultiFast (2-8)
+    double      multibrot_exp_f =  3.0;  // float exponent for MultiSlow
 };
 
 inline double zoom_display(const ViewState& vs)
@@ -29,28 +29,32 @@ inline double zoom_display(const ViewState& vs)
     return 4.0 / vs.view_width;
 }
 
+// Returns a human-readable name combining formula and Julia mode.
 inline const char* fractal_name(const ViewState& vs)
 {
-    switch (vs.fractal) {
-        case FractalType::Mandelbrot:     return "Mandelbrot";
-        case FractalType::Julia:          return "Julia";
-        case FractalType::BurningShip:    return "Burning Ship";
-        case FractalType::Mandelbar:      return "Mandelbar";
-        case FractalType::MultibroSlow:   return "Multibrot (slow)";
-        case FractalType::MultijuliaSlow: return "Multijulia (slow)";
+    switch (vs.formula) {
+        case FormulaType::Standard:
+            return vs.julia_mode ? "Julia"              : "Mandelbrot";
+        case FormulaType::BurningShip:
+            return vs.julia_mode ? "Burning Ship Julia" : "Burning Ship";
+        case FormulaType::Mandelbar:
+            return vs.julia_mode ? "Mandelbar Julia"    : "Mandelbar";
+        case FormulaType::MultiFast:
+            return vs.julia_mode ? "Multijulia"         : "Multibrot";
+        case FormulaType::MultiSlow:
+            return vs.julia_mode ? "Multijulia (slow)"  : "Multibrot (slow)";
     }
     return "Unknown";
 }
 
-inline ViewState default_view_for(FractalType)
+inline ViewState default_view_for(FormulaType)
 {
-    return ViewState{};  // center (0,0), width 4.0 — same for all fractal types
+    return ViewState{};  // center (0,0), width 4.0 — same for all formula types
 }
 
-// Reset navigation (center, zoom) to the default for `new_ft` while preserving
-// all user-controlled parameters: fractal type, Julia params, palette, palette
-// offset, exponents, and iteration limit.
-inline void reset_view_keep_params(ViewState& vs, FractalType new_ft)
+// Reset navigation (center, zoom) to the default while preserving all
+// user-controlled parameters: Julia params, palette, offset, exponents, iter limit.
+inline void reset_view_keep_params(ViewState& vs, FormulaType new_formula, bool new_julia_mode)
 {
     const double      jre   = vs.julia_re;
     const double      jim   = vs.julia_im;
@@ -59,8 +63,9 @@ inline void reset_view_keep_params(ViewState& vs, FractalType new_ft)
     const int         mexp  = vs.multibrot_exp;
     const double      mexpf = vs.multibrot_exp_f;
     const int         iter  = vs.max_iter;
-    vs               = default_view_for(new_ft);
-    vs.fractal        = new_ft;
+    vs                = default_view_for(new_formula);
+    vs.formula        = new_formula;
+    vs.julia_mode     = new_julia_mode;
     vs.julia_re       = jre;
     vs.julia_im       = jim;
     vs.palette        = pal;

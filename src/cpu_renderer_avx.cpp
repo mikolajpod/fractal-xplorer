@@ -240,3 +240,24 @@ void avx2_mandelbar_multi_4(double re0, double scale, double im,
 {
     avx2_multibrot_kernel<false, true>(re0, scale, im, max_iter, exp_n, 0.0, 0.0, out4);
 }
+
+void avx2_burning_ship_julia_4(double re0, double scale, double im,
+                                int max_iter, double julia_re, double julia_im,
+                                double* out4)
+{
+    avx2_kernel<true, true, false>(re0, scale, im, max_iter, julia_re, julia_im, out4);
+}
+
+void avx2_mandelbar_julia_4(double re0, double scale, double im,
+                              int max_iter, double julia_re, double julia_im,
+                              double* out4)
+{
+    avx2_kernel<true, false, true>(re0, scale, im, max_iter, julia_re, julia_im, out4);
+}
+
+void avx2_mandelbar_multi_julia_4(double re0, double scale, double im,
+                                   int max_iter, int exp_n,
+                                   double julia_re, double julia_im, double* out4)
+{
+    avx2_multibrot_kernel<true, true>(re0, scale, im, max_iter, exp_n, julia_re, julia_im, out4);
+}
