@@ -214,17 +214,7 @@ int main(int argc, char* argv[])
             }
             if (ImGui::BeginMenu("View")) {
                 if (ImGui::MenuItem("Reset View", "R")) {
-                    FractalType ft    = vs.fractal;
-                    double jre = vs.julia_re,        jim   = vs.julia_im;
-                    int    pal = vs.palette,          poff  = vs.pal_offset;
-                    int    mexp = vs.multibrot_exp;   double mexpf = vs.multibrot_exp_f;
-                    int    iter = vs.max_iter;
-                    vs = default_view_for(ft);
-                    vs.fractal         = ft;
-                    vs.julia_re        = jre;   vs.julia_im        = jim;
-                    vs.palette         = pal;   vs.pal_offset      = poff;
-                    vs.multibrot_exp   = mexp;  vs.multibrot_exp_f = mexpf;
-                    vs.max_iter        = iter;
+                    reset_view_keep_params(vs, vs.fractal);
                     dirty = true;
                 }
                 ImGui::EndMenu();
@@ -247,17 +237,7 @@ int main(int argc, char* argv[])
             exp_msg.clear();
         }
         if (ImGui::IsKeyPressed(ImGuiKey_R)) {
-            FractalType ft    = vs.fractal;
-            double jre = vs.julia_re,        jim   = vs.julia_im;
-            int    pal = vs.palette,          poff  = vs.pal_offset;
-            int    mexp = vs.multibrot_exp;   double mexpf = vs.multibrot_exp_f;
-            int    iter = vs.max_iter;
-            vs = default_view_for(ft);
-            vs.fractal         = ft;
-            vs.julia_re        = jre;   vs.julia_im        = jim;
-            vs.palette         = pal;   vs.pal_offset      = poff;
-            vs.multibrot_exp   = mexp;  vs.multibrot_exp_f = mexpf;
-            vs.max_iter        = iter;
+            reset_view_keep_params(vs, vs.fractal);
             dirty = true;
         }
         if (ImGui::IsKeyPressed(ImGuiKey_F1))
@@ -318,32 +298,12 @@ int main(int argc, char* argv[])
             int ft = static_cast<int>(vs.fractal);
             ImGui::SetNextItemWidth(-1.0f);
             if (ImGui::Combo("##fractal", &ft, names, FRACTAL_COUNT)) {
-                FractalType new_ft = static_cast<FractalType>(ft);
-                double jre = vs.julia_re,        jim   = vs.julia_im;
-                int    pal = vs.palette,          poff  = vs.pal_offset;
-                int    mexp = vs.multibrot_exp;   double mexpf = vs.multibrot_exp_f;
-                int    iter = vs.max_iter;
-                vs = default_view_for(new_ft);
-                vs.fractal         = new_ft;
-                vs.julia_re        = jre;   vs.julia_im        = jim;
-                vs.palette         = pal;   vs.pal_offset      = poff;
-                vs.multibrot_exp   = mexp;  vs.multibrot_exp_f = mexpf;
-                vs.max_iter        = iter;
+                reset_view_keep_params(vs, static_cast<FractalType>(ft));
                 dirty = true;
             }
             if (ImGui::IsItemHovered() && io.MouseWheel != 0.0f) {
                 int nft = (ft + (io.MouseWheel < 0.0f ? 1 : -1) + FRACTAL_COUNT) % FRACTAL_COUNT;
-                FractalType new_ft = static_cast<FractalType>(nft);
-                double jre = vs.julia_re,        jim   = vs.julia_im;
-                int    pal = vs.palette,          poff  = vs.pal_offset;
-                int    mexp = vs.multibrot_exp;   double mexpf = vs.multibrot_exp_f;
-                int    iter = vs.max_iter;
-                vs = default_view_for(new_ft);
-                vs.fractal         = new_ft;
-                vs.julia_re        = jre;   vs.julia_im        = jim;
-                vs.palette         = pal;   vs.pal_offset      = poff;
-                vs.multibrot_exp   = mexp;  vs.multibrot_exp_f = mexpf;
-                vs.max_iter        = iter;
+                reset_view_keep_params(vs, static_cast<FractalType>(nft));
                 dirty = true;
             }
         }

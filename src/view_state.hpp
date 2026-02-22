@@ -46,3 +46,26 @@ inline ViewState default_view_for(FractalType)
 {
     return ViewState{};  // center (0,0), width 4.0 — same for all fractal types
 }
+
+// Reset navigation (center, zoom) to the default for `new_ft` while preserving
+// all user-controlled parameters: fractal type, Julia params, palette, palette
+// offset, exponents, and iteration limit.
+inline void reset_view_keep_params(ViewState& vs, FractalType new_ft)
+{
+    const double      jre   = vs.julia_re;
+    const double      jim   = vs.julia_im;
+    const int         pal   = vs.palette;
+    const int         poff  = vs.pal_offset;
+    const int         mexp  = vs.multibrot_exp;
+    const double      mexpf = vs.multibrot_exp_f;
+    const int         iter  = vs.max_iter;
+    vs               = default_view_for(new_ft);
+    vs.fractal        = new_ft;
+    vs.julia_re       = jre;
+    vs.julia_im       = jim;
+    vs.palette        = pal;
+    vs.pal_offset     = poff;
+    vs.multibrot_exp  = mexp;
+    vs.multibrot_exp_f = mexpf;
+    vs.max_iter       = iter;
+}
