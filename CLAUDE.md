@@ -41,7 +41,7 @@ bash package.sh   # → fractal_xplorer-1.0-win64.zip
 
 ```
 User input
-  → ViewState (center_x/y, view_width, max_iter, fractal, julia_re/im,
+  → ViewState (center_x/y, view_width, max_iter, formula, julia_mode, julia_re/im,
                palette, pal_offset, multibrot_exp, multibrot_exp_f)
   → CpuRenderer::render(vs, PixelBuffer)          [tile pool + AVX2 or scalar kernel]
   → palette_color(smooth, max_iter, palette, pal_offset)  [1024-entry LUT lookup]
@@ -51,8 +51,9 @@ User input
 ```
 
 Re-render is triggered by setting `dirty = true`. The mini map is re-rendered
-whenever the exponent (`multibrot_exp`) changes; it always shows the
-Mandelbrot-equivalent set for the current exponent at a fixed reference view.
+whenever `formula`, `multibrot_exp`, or `multibrot_exp_f` changes; it always renders
+in Mandelbrot mode (`julia_mode=false`) of the current formula, showing the
+parameter space for *c* at a fixed reference view.
 
 ---
 
@@ -78,7 +79,7 @@ Do not change this layout without updating all three output paths.
 
 | File | Role |
 |---|---|
-| `view_state.hpp` | `ViewState` struct + `zoom_display()` + `fractal_name()` + `default_view_for()` |
+| `view_state.hpp` | `FormulaType` enum + `ViewState` struct + `zoom_display()` + `fractal_name()` + `reset_view_keep_params()` |
 | `renderer.hpp` | `IFractalRenderer` interface, `PixelBuffer` |
 | `fractal.hpp` | Scalar iteration kernels (Mandelbrot, Julia, Burning Ship, Mandelbar, Multibrot, Multijulia) |
 | `fractal_avx.hpp` | Declarations for AVX2 entry points |
@@ -108,47 +109,56 @@ reinterpret_cast<ImTextureID>(static_cast<uintptr_t>(gl_id))  // correct
 ```
 smooth = iters + 1 - log(log(|z|) / log(n)) / log(n)
 ```
-where `n` is the fractal exponent (2 for standard Mandelbrot/Julia/Mandelbar/BurningShip,
-or `multibrot_exp` for Multibrot/Multijulia). For n=2 this reduces to the classic
-`log2(log2(|z|))` formula. Interior points return `max_iter` exactly.
+where `n` is the fractal exponent (2 for Standard/BurningShip/Mandelbar at n=2,
+or `multibrot_exp` / `multibrot_exp_f` for higher degrees). For n=2 this reduces
+to the classic `log2(log2(|z|))` formula. Interior points return `max_iter` exactly.
 
 The AVX2 path accumulates `iters_d` by adding 1.0 per active lane per iteration
 (not `set1_pd(i+1)`), so `iters_d == i` at escape, matching the scalar formula.
 
 **AVX2 kernel structure** — `cpu_renderer_avx.cpp` contains two templates:
-- `avx2_kernel<IsJulia, IsBurningShip, IsMandelbar>` — for degree-2 fractals
-  (Mandelbrot, Julia, BurningShip, Mandelbar); uses FMA squaring
-- `avx2_multibrot_kernel<IsJulia>` — for integer exponent ≥ 3; uses repeated
-  complex multiplication (no trig), smooth coloring with `log(exp_n)`
+- `avx2_kernel<IsJulia, IsBurningShip, IsMandelbar>` — for degree-2 formulas;
+  8 public wrappers cover all (formula × julia_mode) combinations; uses FMA squaring
+- `avx2_multibrot_kernel<IsJulia, IsMandelbar>` — for integer exponent ≥ 2; uses
+  repeated complex multiplication (no trig), smooth coloring with `log(exp_n)`;
+  covers MultiFast and Mandelbar with n≥3, both in Mandelbrot and Julia mode
 
-`n=2` always dispatches to `avx2_mandelbrot_4` / `avx2_julia_4` (unmodified);
+`n=2` for Standard dispatches to `avx2_mandelbrot_4` / `avx2_julia_4`;
 `n≥3` dispatches to `avx2_multibrot_4` / `avx2_multijulia_4`.
 
+**Formula + Julia mode** — `ViewState` has two orthogonal dimensions:
+- `FormulaType formula` — which iteration rule to apply (5 values)
+- `bool julia_mode` — Mandelbrot mode (z₀=0, c=pixel) vs Julia mode (z₀=pixel, c=fixed)
+
+This gives 10 combinations without any enum explosion. `julia_re`/`julia_im` hold
+the fixed *c* parameter used when `julia_mode=true`.
+
 **Default viewport** — `ViewState{}` defaults to center (0, 0), view_width 4.0.
-`default_view_for(ft)` returns this for all fractal types — no per-fractal special cases.
-The mini map overrides these explicitly to keep its Mandelbrot reference view.
+`default_view_for(ft)` returns this for all formula types — no per-formula special cases.
 
 **Reset preserves user params** — `R` / View→Reset resets navigation
-(center, zoom) to the universal default; fractal type, Julia params, palette,
+(center, zoom) to the universal default; formula, julia_mode, Julia params, palette,
 pal_offset, and multibrot exponents survive.
 
 ---
 
-## FractalType Enum
+## FormulaType Enum
 
 ```cpp
-enum class FractalType {
-    Mandelbrot     = 0,  // fast; multibrot_exp>2 => AVX2 Multibrot
-    Julia          = 1,  // fast; multibrot_exp>2 => AVX2 Multijulia
-    BurningShip    = 2,
-    Mandelbar      = 3,  // Tricorn: conj(z)^2 + c
-    MultibroSlow   = 4,  // real exponent; polar form (atan2/pow/sin/cos), scalar
-    MultijuliaSlow = 5,  // real exponent + fixed c; same polar form, scalar
+enum class FormulaType {
+    Standard    = 0,  // z^2 + c  (always degree 2, no exponent slider)
+    BurningShip = 1,  // (|Re z| + i|Im z|)^2 + c
+    Mandelbar   = 2,  // conj(z)^n + c  (integer exp 2-8)
+    MultiFast   = 3,  // z^n + c  (integer exp 2-8, AVX2)
+    MultiSlow   = 4,  // z^n + c  (real exp r, scalar)
 };
-constexpr int FRACTAL_COUNT = 6;
+constexpr int FORMULA_COUNT = 5;
 ```
 
-`multibrot_exp_f` is the float exponent for slow types; any real value is accepted.
+Combined with `bool julia_mode` in `ViewState`, this gives 10 render combinations.
+
+`multibrot_exp` (int, 2–8) is the exponent for Mandelbar and MultiFast.
+`multibrot_exp_f` (double) is the exponent for MultiSlow; any real value is accepted.
 When `multibrot_exp_f` is an exact integer (e.g. 3.0), `render_tile()` detects this
 (`slow_int_n`) and routes to the fast AVX2 repeated-multiply kernel instead.
 
@@ -156,17 +166,19 @@ When `multibrot_exp_f` is an exact integer (e.g. 3.0), `render_tile()` detects t
 
 ## How to Add a New Fixed-Formula Fractal (degree 2)
 
-6 places, 4 files — follow the Mandelbar pattern:
+6 places, 4 files — follow the Burning Ship + Julia pattern:
 
-1. `view_state.hpp` — add enum value to `FractalType`, update `fractal_name()`, bump `FRACTAL_COUNT`
-2. `fractal.hpp` — add scalar `foo_iter(re, im, max_iter)` inline function
-3. `fractal_avx.hpp` — declare `avx2_foo_4(re0, scale, im, max_iter, out4)`
+1. `view_state.hpp` — add enum value to `FormulaType`, update `fractal_name()`, bump `FORMULA_COUNT`
+2. `fractal.hpp` — add scalar `foo_iter(re, im, max_iter)` and
+   `foo_julia_iter(re, im, cr, ci, max_iter)` inline functions
+3. `fractal_avx.hpp` — declare `avx2_foo_4()` and `avx2_foo_julia_4()`
 4. `cpu_renderer_avx.cpp` — add `bool IsFoo` template parameter to `avx2_kernel`,
-   add `if constexpr (IsFoo)` branch in the z-update block, add public wrapper
-   `avx2_foo_4()` → `avx2_kernel<false, false, false, true>(...)`
-5. `cpu_renderer.cpp` — add `case FractalType::Foo:` to both the AVX2 switch and
-   the scalar switch inside `render_tile()`
-6. `main.cpp` — add the name string to the `names[]` array in the fractal Combo
+   add `if constexpr (IsFoo)` branch in the z-update block, add two public wrappers:
+   `avx2_foo_4()` → `avx2_kernel<false, ..., true>(...)` and
+   `avx2_foo_julia_4()` → `avx2_kernel<true, ..., true>(...)`
+5. `cpu_renderer.cpp` — add `case FormulaType::Foo:` to both the AVX2 switch and
+   the scalar switch inside `render_tile()`, dispatch on `vs.julia_mode`
+6. `main.cpp` — add the name string to the `names[]` array in the formula Combo
 
 ---
 
@@ -205,11 +217,11 @@ Also increment `PALETTE_COUNT` in `palette.hpp`.
 - **PATH conflict:** If `cc1.exe` loads DLLs from `C:/Program Files/Git/mingw64`
   instead of MSYS2, builds silently break. Fix: MSYS2 must precede Git in PATH.
 - **Linker permission denied:** The exe is still running. Close it before rebuilding.
-- **Mini map exponent:** The mini map re-renders whenever `multibrot_exp`,
-  `multibrot_exp_f`, or `is_slow` changes. For slow fractal types it renders as
-  `MultibroSlow` with the current float exponent; otherwise as Mandelbrot with the
-  integer exponent. Always max_iter 128, palette 7. Clicking the mini map updates
-  `julia_re`/`julia_im` only — it does not switch the active fractal type.
+- **Mini map:** Re-renders whenever `formula`, `multibrot_exp`, or `multibrot_exp_f`
+  changes. Always renders in Mandelbrot mode (`julia_mode=false`) of the current
+  formula — so Burning Ship Julia shows the Burning Ship parameter space, not
+  Mandelbrot. Always max_iter 128, palette 7. Clicking/dragging updates
+  `julia_re`/`julia_im` only — does not change formula or julia_mode.
 - **Export filename race:** The filename shown in the dialog is regenerated each
   frame. `exp_saved_name` captures it at the moment Export is clicked — use that
   in the success message, not the live-generated string.

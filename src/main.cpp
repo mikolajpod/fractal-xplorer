@@ -292,8 +292,11 @@ int main(int argc, char* argv[])
         ImGui::Separator();
         {
             static const char* names[] = {
-                "z^2 (standard)", "Burning Ship", "Mandelbar",
-                "z^n (fast)", "z^n (slow)"
+                "Mandelbrot  (z^2 + c)",
+                "Burning Ship  (|z|^2 + c)",
+                "Mandelbar  (conj(z)^n + c)",
+                "Multibrot  (z^n + c)",
+                "Multibrot  (z^r + c, slow)",
             };
             int f = static_cast<int>(vs.formula);
             ImGui::SetNextItemWidth(-1.0f);

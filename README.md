@@ -54,27 +54,29 @@ Exports are saved to the folder the exe is in.
 
 ## Side Panel
 
-**Fractal** — switch between fractals (mouse wheel also cycles):
+**Formula** — select the iteration formula (mouse wheel also cycles):
 
 | Name | Formula | Notes |
 |---|---|---|
-| Mandelbrot | z² + c | Classic; exponent slider extends to Multibrot |
-| Julia | z² + c (fixed c) | c set via mini map; exponent slider for Multijulia |
-| Burning Ship | (\|Re z\| + i\|Im z\|)² + c | |
-| Mandelbar | conj(z)^n + c | Tricorn at n=2; exponent slider 2–8, (n+1)-fold symmetry |
-| Multibrot (slow) | z^n + c, real n | Float exponent, any real value |
-| Multijulia (slow) | z^n + c (fixed c), real n | Float exponent + c from mini map |
+| Mandelbrot (z²+c) | z² + c | Classic; always degree 2 |
+| Burning Ship (\|z\|²+c) | (\|Re z\|+i\|Im z\|)²+c | Absolute value of each component |
+| Mandelbar (conj(z)^n+c) | conj(z)^n + c | Tricorn at n=2; exponent slider 2–8, (n+1)-fold symmetry |
+| Multibrot (z^n+c) | z^n + c | Integer exponent 2–8, fast AVX2 path |
+| Multibrot (z^r+c, slow) | z^r + c | Real exponent r, any value; scalar polar-form arithmetic |
 
-**Exponent (integer)** — slider 2–8, shown for Mandelbrot, Julia, and Mandelbar.
-At n=2: standard formula. At n≥3: fast AVX2-accelerated path using repeated
-complex multiplication (no trig). Mandelbar at n≥3 computes conj(z)^n + c,
-giving (n+1)-fold rotational symmetry.
+**Julia mode** — checkbox below the formula selector. When enabled, each pixel is
+used as the starting point z₀ and *c* is fixed (set via the mini map or re/im inputs).
+Available for every formula — giving 10 total combinations.
 
-**Exponent (float)** — shown for Multibrot (slow) and Multijulia (slow).
+**Exponent (integer)** — slider 2–8, shown for Mandelbar and Multibrot (z^n+c).
+At n=2: standard degree-2 formula. At n≥3: fast AVX2 path using repeated complex
+multiplication (no trig). Mandelbar at n≥3 gives (n+1)-fold rotational symmetry.
+
+**Exponent (float)** — shown for Multibrot (z^r+c, slow).
 Slider covers −10 to 10; the numeric input below accepts any real value.
 Ctrl+click on the slider to type a value directly.
-When the exponent is an integer value (e.g. 3.0), the fast AVX2 path is used
-automatically. Non-integer exponents use scalar polar-form arithmetic (slower).
+When the exponent is an exact integer (e.g. 3.0), the fast AVX2 path is used
+automatically. Non-integer exponents use scalar polar-form arithmetic.
 
 **Iterations** — logarithmic slider, 64 – 8192 (default 256).
 Higher values reveal more detail at deep zoom at the cost of speed.
@@ -95,10 +97,10 @@ Higher values reveal more detail at deep zoom at the cost of speed.
 **Offset** slider — shifts the palette along the iteration axis (0 – 1023).
 
 **Julia parameter** — click or drag on the mini map to set the complex
-parameter *c*. The mini map shows the Mandelbrot-equivalent set for the
-current exponent (integer or float), so interesting Julia parameters are
-easy to spot. Fine-tune with the **re** / **im** numeric inputs.
-Clicking the mini map updates *c* only — it does not change the active fractal type.
+parameter *c*. The mini map shows the current formula in Mandelbrot mode, so
+interesting Julia parameters are easy to spot visually (e.g. Burning Ship Julia
+shows the Burning Ship set). Fine-tune with the **re** / **im** numeric inputs.
+Clicking the mini map updates *c* only — it does not change formula or Julia mode.
 
 **Threads** — select thread count (Auto uses all logical CPUs).
 Change takes effect on the next render.
