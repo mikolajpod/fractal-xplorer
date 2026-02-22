@@ -294,11 +294,11 @@ int main(int argc, char* argv[])
             static const char* names[] = {
                 "Mandelbrot  (z^2 + c)",
                 "Burning Ship  (|z|^2 + c)",
+                "Celtic  (|Re(z^2)| + c)",
+                "Buffalo  (|Re(z^2)| + i|Im(z^2)| + c)",
                 "Mandelbar  (conj(z)^n + c)",
                 "Multibrot  (z^n + c)",
                 "Multibrot  (z^r + c, slow)",
-                "Celtic  (|Re(z^2)| + c)",
-                "Buffalo  (|Re(z^2)| + i|Im(z^2)| + c)",
             };
             int f = static_cast<int>(vs.formula);
             ImGui::SetNextItemWidth(-1.0f);

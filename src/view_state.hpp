@@ -3,11 +3,11 @@
 enum class FormulaType {
     Standard    = 0,  // z^2 + c  (always degree 2, no exponent slider)
     BurningShip = 1,  // (|Re z| + i|Im z|)^2 + c
-    Mandelbar   = 2,  // conj(z)^n + c  (integer exp 2-8)
-    MultiFast   = 3,  // z^n + c  (integer exp 2-8, AVX2)
-    MultiSlow   = 4,  // z^n + c  (real exp, scalar)
-    Celtic      = 5,  // |Re(z^2)| + i Im(z^2) + c
-    Buffalo     = 6,  // |Re(z^2)| + i|Im(z^2)| + c
+    Celtic      = 2,  // |Re(z^2)| + i Im(z^2) + c
+    Buffalo     = 3,  // |Re(z^2)| + i|Im(z^2)| + c
+    Mandelbar   = 4,  // conj(z)^n + c  (integer exp 2-8)
+    MultiFast   = 5,  // z^n + c  (integer exp 2-8, AVX2)
+    MultiSlow   = 6,  // z^n + c  (real exp, scalar)
 };
 constexpr int FORMULA_COUNT = 7;
 

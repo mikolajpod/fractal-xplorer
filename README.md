@@ -60,11 +60,11 @@ Exports are saved to the folder the exe is in.
 |---|---|---|
 | Mandelbrot (z²+c) | z² + c | Classic; always degree 2 |
 | Burning Ship (\|z\|²+c) | (\|Re z\|+i\|Im z\|)²+c | Absolute value of each component before squaring |
+| Celtic (\|Re(z²)\|+c) | \|Re(z²)\| + i Im(z²) + c | Abs applied to real part of z² after squaring |
+| Buffalo (\|Re(z²)\|+i\|Im(z²)\|+c) | \|Re(z²)\| + i\|Im(z²)\| + c | Abs applied to both parts of z² after squaring |
 | Mandelbar (conj(z)^n+c) | conj(z)^n + c | Tricorn at n=2; exponent slider 2–8, (n+1)-fold symmetry |
 | Multibrot (z^n+c) | z^n + c | Integer exponent 2–8, fast AVX2 path |
 | Multibrot (z^r+c, slow) | z^r + c | Real exponent r, any value; scalar polar-form arithmetic |
-| Celtic (\|Re(z²)\|+c) | \|Re(z²)\| + i Im(z²) + c | Abs applied to real part of z² after squaring |
-| Buffalo (\|Re(z²)\|+i\|Im(z²)\|+c) | \|Re(z²)\| + i\|Im(z²)\| + c | Abs applied to both parts of z² after squaring |
 
 **Julia mode** — checkbox below the formula selector. When enabled, each pixel is
 used as the starting point z₀ and *c* is fixed (set via the mini map or re/im inputs).
