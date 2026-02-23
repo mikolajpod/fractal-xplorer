@@ -98,13 +98,30 @@ Higher values reveal more detail at deep zoom at the cost of speed.
 
 **Offset** slider — shifts the palette along the iteration axis (0 – 1023).
 
-**Julia parameter** — click or drag on the mini map to set the complex
-parameter *c*. The mini map shows the current formula in Mandelbrot mode, so
-interesting Julia parameters are easy to spot visually (e.g. Burning Ship Julia
-shows the Burning Ship set). Fine-tune with the **re** / **im** numeric inputs.
-Clicking the mini map updates *c* only — it does not change formula or Julia mode.
+**Julia parameter** — the mini map shows the current formula in Mandelbrot mode,
+making it easy to spot interesting Julia parameters visually.
 
-**Threads** — select thread count (Auto uses all logical CPUs).
+| Mini map action | Result |
+|---|---|
+| Left-click / drag | Set *c* to the clicked point |
+| Right-click drag | Pan the mini map |
+| Mouse wheel | Zoom in / out (centered on cursor) |
+| **Reset** button | Restore default −2 … 2 view |
+
+Fine-tune *c* with the **re** / **im** numeric inputs below the map.
+The mini map only updates *c* — it never changes formula or Julia mode.
+
+**Orbit** — enable the **Show orbit** checkbox, then **Ctrl+click** any point
+in the main fractal area. Up to 20 iteration steps are drawn as dots over the
+image: the seed point in red, subsequent points in yellow. The orbit updates
+instantly on every Ctrl+click; uncheck to hide it.
+
+---
+
+## Threads
+
+**Threads menu** in the menu bar — select thread count. "Auto (N)" (default) uses
+all N logical CPUs. Individual counts 1 … N are listed below a separator.
 Change takes effect on the next render.
 
 ---

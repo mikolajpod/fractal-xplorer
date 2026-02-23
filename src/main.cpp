@@ -5,6 +5,7 @@
 #include "imgui_impl_opengl3.h"
 
 #include "view_state.hpp"
+#include "fractal.hpp"
 #include "renderer.hpp"
 #include "cpu_renderer.hpp"
 #include "palette.hpp"
@@ -135,10 +136,26 @@ int main(int argc, char* argv[])
     int         last_irw     = 0;
     int         last_irh     = 0;
 
+    // Thread count selector (0 = Auto)
+    int thread_sel = 0;
+
+    // Orbit visualization
+    bool   show_orbit    = false;
+    bool   orbit_active  = false;
+    double orbit_re      = 0.0;
+    double orbit_im      = 0.0;
+
     // Mini Mandelbrot map
     PixelBuffer mini_pbuf;
     bool        mini_dirty    = true;   // render once on startup
     bool        mini_dragging = false;
+    bool        mini_panning  = false;
+    ImVec2      mini_pan_start_mouse = {};
+    double      mini_pan_start_cx = 0.0;
+    double      mini_pan_start_cy = 0.0;
+    double      mini_cx       = 0.0;   // minimap center (fractal coords)
+    double      mini_cy       = 0.0;
+    double      mini_vw       = 4.0;   // minimap view width
 
     // Navigation
     bool      panning         = false;
@@ -228,6 +245,26 @@ int main(int argc, char* argv[])
                 }
                 ImGui::EndMenu();
             }
+            if (ImGui::BeginMenu("Threads")) {
+                const int hw = renderer.hw_concurrency;
+                char buf[32];
+                snprintf(buf, sizeof(buf), "Auto (%d)", hw);
+                if (ImGui::MenuItem(buf, nullptr, thread_sel == 0)) {
+                    thread_sel = 0;
+                    renderer.set_thread_count(0);
+                    dirty = true;
+                }
+                ImGui::Separator();
+                for (int i = 1; i <= hw; ++i) {
+                    snprintf(buf, sizeof(buf), "%d", i);
+                    if (ImGui::MenuItem(buf, nullptr, thread_sel == i)) {
+                        thread_sel = i;
+                        renderer.set_thread_count(i);
+                        dirty = true;
+                    }
+                }
+                ImGui::EndMenu();
+            }
             if (ImGui::BeginMenu("Help")) {
                 if (ImGui::MenuItem("Benchmark", "B")) show_benchmark = true;
                 ImGui::Separator();
@@ -294,7 +331,9 @@ int main(int argc, char* argv[])
             ImGuiWindowFlags_NoTitleBar            |
             ImGuiWindowFlags_NoResize              |
             ImGuiWindowFlags_NoMove                |
-            ImGuiWindowFlags_NoBringToFrontOnFocus);
+            ImGuiWindowFlags_NoBringToFrontOnFocus |
+            ImGuiWindowFlags_NoScrollbar           |
+            ImGuiWindowFlags_NoScrollWithMouse);
 
         // --- Formula selector ---
         ImGui::TextDisabled("FORMULA");
@@ -391,25 +430,36 @@ int main(int argc, char* argv[])
         const int   map_iw    = static_cast<int>(map_w);
         const int   map_ih    = static_cast<int>(map_h);
         // Complex units per display pixel in the mini map
-        const float map_scale = 4.0f / map_w;
+        const float map_scale = static_cast<float>(mini_vw) / map_w;
 
-        // Re-render mini map when formula or exponent changes
+        // Re-render mini map when formula, exponent, or minimap view changes
         static FormulaType mini_last_formula  = FormulaType::Standard;
         static int         mini_last_exp      = 2;
         static double      mini_last_exp_f    = 3.0;
+        static double      mini_last_cx       = 0.0;
+        static double      mini_last_cy       = 0.0;
+        static double      mini_last_vw       = 4.0;
         if (mini_last_formula != vs.formula         ||
             mini_last_exp     != vs.multibrot_exp   ||
-            mini_last_exp_f   != vs.multibrot_exp_f) {
+            mini_last_exp_f   != vs.multibrot_exp_f ||
+            mini_last_cx      != mini_cx            ||
+            mini_last_cy      != mini_cy            ||
+            mini_last_vw      != mini_vw) {
             mini_dirty          = true;
             mini_last_formula   = vs.formula;
             mini_last_exp       = vs.multibrot_exp;
             mini_last_exp_f     = vs.multibrot_exp_f;
+            mini_last_cx        = mini_cx;
+            mini_last_cy        = mini_cy;
+            mini_last_vw        = mini_vw;
         }
 
-        // Render mini map: Mandelbrot-mode of current formula, symmetric -2..2 view
+        // Render mini map: Mandelbrot-mode of current formula, current mini view
         if (mini_dirty && map_iw > 0 && map_ih > 0) {
             ViewState mini_vs;
-            // center_x/y = 0, view_width = 4.0 — from struct defaults
+            mini_vs.center_x        = mini_cx;
+            mini_vs.center_y        = mini_cy;
+            mini_vs.view_width      = mini_vw;
             mini_vs.formula         = vs.formula;
             mini_vs.julia_mode      = false;   // always Mandelbrot-mode (parameter space)
             mini_vs.max_iter        = 128;
@@ -432,10 +482,10 @@ int main(int argc, char* argv[])
 
             // Draw c-parameter indicator (bullseye)
             const float dot_x = map_tl.x
-                + static_cast<float>(vs.julia_re) / map_scale
+                + static_cast<float>((vs.julia_re - mini_cx) / map_scale)
                 + map_w * 0.5f;
             const float dot_y = map_tl.y
-                + static_cast<float>(vs.julia_im) / map_scale
+                + static_cast<float>((vs.julia_im - mini_cy) / map_scale)
                 + map_h * 0.5f;
             ImDrawList* dl = ImGui::GetWindowDrawList();
             dl->AddCircleFilled(ImVec2(dot_x, dot_y), 3.5f,
@@ -443,7 +493,7 @@ int main(int argc, char* argv[])
             dl->AddCircle      (ImVec2(dot_x, dot_y), 5.5f,
                                 IM_COL32(255, 220,  50, 255), 0, 1.5f);
 
-            // Start drag on click inside mini map
+            // Left-click/drag: pick Julia c parameter
             if (map_hovered && ImGui::IsMouseClicked(ImGuiMouseButton_Left))
                 mini_dragging = true;
             if (!ImGui::IsMouseDown(ImGuiMouseButton_Left))
@@ -452,10 +502,44 @@ int main(int argc, char* argv[])
             if (mini_dragging) {
                 const float mx = io.MousePos.x - map_tl.x;
                 const float my = io.MousePos.y - map_tl.y;
-                vs.julia_re = static_cast<double>((mx - map_w * 0.5f) * map_scale);
-                vs.julia_im = static_cast<double>((my - map_h * 0.5f) * map_scale);
+                vs.julia_re = mini_cx + static_cast<double>((mx - map_w * 0.5f) * map_scale);
+                vs.julia_im = mini_cy + static_cast<double>((my - map_h * 0.5f) * map_scale);
                 dirty = true;
             }
+
+            // Right-click drag: pan minimap
+            if (map_hovered && ImGui::IsMouseClicked(ImGuiMouseButton_Right)) {
+                mini_panning        = true;
+                mini_pan_start_mouse = io.MousePos;
+                mini_pan_start_cx   = mini_cx;
+                mini_pan_start_cy   = mini_cy;
+            }
+            if (!ImGui::IsMouseDown(ImGuiMouseButton_Right))
+                mini_panning = false;
+
+            if (mini_panning) {
+                mini_cx = mini_pan_start_cx - (io.MousePos.x - mini_pan_start_mouse.x) * map_scale;
+                mini_cy = mini_pan_start_cy - (io.MousePos.y - mini_pan_start_mouse.y) * map_scale;
+            }
+
+            // Mouse wheel zoom on minimap (centered on cursor)
+            if (map_hovered && io.MouseWheel != 0.0f) {
+                const float  mx     = io.MousePos.x - map_tl.x;
+                const float  my     = io.MousePos.y - map_tl.y;
+                const double cur_re = mini_cx + (mx - map_w * 0.5f) * map_scale;
+                const double cur_im = mini_cy + (my - map_h * 0.5f) * map_scale;
+                const double factor = (io.MouseWheel > 0.0f) ? 1.25 : (1.0 / 1.25);
+                mini_vw /= factor;
+                const double ns = mini_vw / map_w;
+                mini_cx = cur_re - (mx - map_w * 0.5f) * ns;
+                mini_cy = cur_im - (my - map_h * 0.5f) * ns;
+            }
+        }
+
+        // Reset minimap view
+        if (ImGui::Button("Reset##minimap", ImVec2(-1.0f, 0.0f))) {
+            mini_cx = 0.0;  mini_cy = 0.0;  mini_vw = 4.0;
+            mini_dirty = true;
         }
 
         // re / im numeric inputs
@@ -473,28 +557,15 @@ int main(int argc, char* argv[])
                 { vs.julia_im = im; dirty = true; }
         }
 
-        // --- Thread count ---
+        // --- Orbit ---
         ImGui::Spacing();
-        ImGui::TextDisabled("THREADS");
+        ImGui::TextDisabled("ORBIT");
         ImGui::Separator();
-        {
-            static int thread_sel = 0;  // 0 = Auto
-            int hw = renderer.hw_concurrency;
-            // Non-capturing lambda converts to a plain function pointer for ImGui
-            auto thread_getter = [](void* data, int idx, const char** out) -> bool {
-                static char buf[32];
-                const int n = *static_cast<int*>(data);
-                if (idx == 0) { snprintf(buf, sizeof(buf), "Auto (%d)", n); }
-                else          { snprintf(buf, sizeof(buf), "%d", idx); }
-                *out = buf;
-                return true;
-            };
-            ImGui::SetNextItemWidth(-1.0f);
-            if (ImGui::Combo("##threads", &thread_sel, thread_getter, &hw, hw + 1)) {
-                renderer.set_thread_count(thread_sel);
-                dirty = true;
-            }
+        if (ImGui::Checkbox("Show orbit", &show_orbit)) {
+            if (!show_orbit) orbit_active = false;
         }
+        if (show_orbit)
+            ImGui::TextDisabled("Ctrl+click to pick point");
 
         ImGui::End();  // ##panel
 
@@ -534,9 +605,18 @@ int main(int argc, char* argv[])
             dirty = true;
         }
 
-        // Left-click drag: pan
+        // Ctrl+click: pick orbit seed (checked before pan so Ctrl suppresses pan)
+        if (show_orbit && render_hovered &&
+            ImGui::IsMouseClicked(ImGuiMouseButton_Left) && io.KeyCtrl) {
+            const double scale = vs.view_width / irw;
+            orbit_re     = vs.center_x + (io.MousePos.x - render_x - irw * 0.5) * scale;
+            orbit_im     = vs.center_y + (io.MousePos.y - render_y - irh * 0.5) * scale;
+            orbit_active = true;
+        }
+
+        // Left-click drag: pan (skip when Ctrl is held for orbit pick)
         if (render_hovered &&
-            ImGui::IsMouseClicked(ImGuiMouseButton_Left) && !zoom_boxing) {
+            ImGui::IsMouseClicked(ImGuiMouseButton_Left) && !zoom_boxing && !io.KeyCtrl) {
             panning         = true;
             pan_start_mouse = io.MousePos;
             pan_start_vs    = vs;
@@ -585,6 +665,22 @@ int main(int argc, char* argv[])
                 }
                 zoom_boxing = false;
             }
+        }
+
+        // Orbit overlay
+        if (show_orbit && orbit_active) {
+            auto pts = compute_orbit(orbit_re, orbit_im, vs, 20);
+            const double scale = vs.view_width / irw;
+            auto to_screen = [&](double r, double i) -> ImVec2 {
+                return { render_x + static_cast<float>((r - vs.center_x) / scale + irw * 0.5f),
+                         render_y + static_cast<float>((i - vs.center_y) / scale + irh * 0.5f) };
+            };
+            ImDrawList* odl = ImGui::GetWindowDrawList();
+            for (size_t k = 0; k < pts.size(); ++k)
+                odl->AddCircleFilled(to_screen(pts[k].first, pts[k].second),
+                                     k == 0 ? 4.0f : 2.5f,
+                                     k == 0 ? IM_COL32(255, 80, 80, 230)
+                                            : IM_COL32(255, 220, 50, 230));
         }
 
         ImGui::End();  // ##render

@@ -51,9 +51,11 @@ User input
 ```
 
 Re-render is triggered by setting `dirty = true`. The mini map is re-rendered
-whenever `formula`, `multibrot_exp`, or `multibrot_exp_f` changes; it always renders
-in Mandelbrot mode (`julia_mode=false`) of the current formula, showing the
-parameter space for *c* at a fixed reference view.
+whenever `formula`, `multibrot_exp`, `multibrot_exp_f`, `mini_cx`, `mini_cy`,
+or `mini_vw` changes; it always renders in Mandelbrot mode (`julia_mode=false`)
+of the current formula. The mini map has its own navigable viewport (`mini_cx/cy/vw`)
+with left-drag to pick *c*, right-drag to pan, scroll-wheel to zoom, and a Reset
+button that restores the default −2…2 view.
 
 ---
 
@@ -224,11 +226,18 @@ Also increment `PALETTE_COUNT` in `palette.hpp`.
 - **PATH conflict:** If `cc1.exe` loads DLLs from `C:/Program Files/Git/mingw64`
   instead of MSYS2, builds silently break. Fix: MSYS2 must precede Git in PATH.
 - **Linker permission denied:** The exe is still running. Close it before rebuilding.
-- **Mini map:** Re-renders whenever `formula`, `multibrot_exp`, or `multibrot_exp_f`
-  changes. Always renders in Mandelbrot mode (`julia_mode=false`) of the current
-  formula — so Burning Ship Julia shows the Burning Ship parameter space, not
-  Mandelbrot. Always max_iter 128, palette 7. Clicking/dragging updates
-  `julia_re`/`julia_im` only — does not change formula or julia_mode.
+- **Mini map:** Re-renders whenever `formula`, `multibrot_exp`, `multibrot_exp_f`,
+  `mini_cx`, `mini_cy`, or `mini_vw` changes. Always renders in Mandelbrot mode
+  (`julia_mode=false`) of the current formula — so Burning Ship Julia shows the
+  Burning Ship parameter space, not Mandelbrot. Always max_iter 128, palette 7.
+  Left-drag updates `julia_re`/`julia_im` only. Right-drag pans (`mini_cx/cy`).
+  Scroll wheel zooms (`mini_vw`). Reset button restores `mini_cx=0, mini_cy=0,
+  mini_vw=4`. Panel has `NoScrollbar` to prevent oscillation from `map_w` changing.
+- **Orbit:** `compute_orbit()` in `fractal.hpp` returns up to 20 z-trajectory
+  points for any formula+julia_mode. Enabled by "Show orbit" checkbox; Ctrl+click
+  in the render area picks the seed; drawn as dots (red seed, yellow rest) using
+  `ImDrawList` inside `##render`. The orbit Ctrl+click suppresses the pan handler
+  via `!io.KeyCtrl` guard.
 - **Export filename race:** The filename shown in the dialog is regenerated each
   frame. `exp_saved_name` captures it at the moment Export is clicked — use that
   in the success message, not the live-generated string.

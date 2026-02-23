@@ -1,6 +1,8 @@
 #pragma once
 
 #include <cmath>
+#include <vector>
+#include "view_state.hpp"
 
 // Returns smooth iteration count for escaped points, or max_iter for interior.
 // Smooth coloring uses the "normalized iteration count" (log-log) formula.
@@ -364,4 +366,108 @@ inline double mandelbar_multi_julia_iter(double re, double im, double cr, double
         ++i;
     }
     return static_cast<double>(max_iter);
+}
+
+// Returns up to max_n intermediate z values (stops early on escape).
+// Works for any formula via the ViewState formula + julia_mode fields.
+// Interior points (never escaping) still return all max_n+1 points.
+inline std::vector<std::pair<double,double>>
+compute_orbit(double re, double im, const ViewState& vs, int max_n = 20)
+{
+    std::vector<std::pair<double,double>> pts;
+    pts.reserve(static_cast<size_t>(max_n) + 1);
+
+    double zr, zi, cr, ci;
+    if (vs.julia_mode) {
+        zr = re; zi = im;
+        cr = vs.julia_re; ci = vs.julia_im;
+    } else {
+        zr = 0.0; zi = 0.0;
+        cr = re; ci = im;
+    }
+
+    pts.push_back({zr, zi});
+
+    for (int i = 0; i < max_n; ++i) {
+        double new_zr, new_zi;
+
+        switch (vs.formula) {
+            case FormulaType::Standard:
+                new_zr = zr*zr - zi*zi + cr;
+                new_zi = 2.0*zr*zi + ci;
+                break;
+            case FormulaType::BurningShip: {
+                const double azr = std::abs(zr), azi = std::abs(zi);
+                new_zr = azr*azr - azi*azi + cr;
+                new_zi = 2.0*azr*azi + ci;
+                break;
+            }
+            case FormulaType::Celtic: {
+                const double zr2 = zr*zr, zi2 = zi*zi;
+                new_zr = std::abs(zr2 - zi2) + cr;
+                new_zi = 2.0*zr*zi + ci;
+                break;
+            }
+            case FormulaType::Buffalo: {
+                const double zr2 = zr*zr, zi2 = zi*zi;
+                new_zr = std::abs(zr2 - zi2) + cr;
+                new_zi = std::abs(2.0*zr*zi) + ci;
+                break;
+            }
+            case FormulaType::Mandelbar: {
+                const int n = vs.multibrot_exp;
+                if (n == 2) {
+                    new_zr =  zr*zr - zi*zi + cr;
+                    new_zi = -2.0*zr*zi + ci;
+                } else {
+                    double pr = zr, pi = zi;
+                    for (int k = 1; k < n; ++k) {
+                        const double np = pr*zr - pi*zi;
+                        pi = pr*zi + pi*zr;
+                        pr = np;
+                    }
+                    new_zr =  pr + cr;
+                    new_zi = -pi + ci;
+                }
+                break;
+            }
+            case FormulaType::MultiFast: {
+                const int n = vs.multibrot_exp;
+                double pr = zr, pi = zi;
+                for (int k = 1; k < n; ++k) {
+                    const double np = pr*zr - pi*zi;
+                    pi = pr*zi + pi*zr;
+                    pr = np;
+                }
+                new_zr = pr + cr;
+                new_zi = pi + ci;
+                break;
+            }
+            case FormulaType::MultiSlow: {
+                const double n    = vs.multibrot_exp_f;
+                const double mag2 = zr*zr + zi*zi;
+                if (mag2 == 0.0) {
+                    new_zr = cr;
+                    new_zi = ci;
+                } else {
+                    const double r_n   = std::exp(n * std::log(mag2) * 0.5);
+                    const double theta = std::atan2(zi, zr);
+                    new_zr = r_n * std::cos(n * theta) + cr;
+                    new_zi = r_n * std::sin(n * theta) + ci;
+                }
+                break;
+            }
+            default:
+                new_zr = cr;
+                new_zi = ci;
+                break;
+        }
+
+        zr = new_zr;
+        zi = new_zi;
+        pts.push_back({zr, zi});
+        if (zr*zr + zi*zi > 4.0) break;
+    }
+
+    return pts;
 }
