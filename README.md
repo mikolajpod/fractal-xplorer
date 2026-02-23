@@ -138,12 +138,33 @@ Open with `Ctrl+S` or **File → Export Image**.
 
 ## Benchmark
 
+### Interactive benchmark
+
 Open with `B` or **Tools → Benchmark**.
 
 Renders 1920×1080 Mandelbrot (center −0.5, width 3.5, 256 iter) for each thread
 count from 1 to the number of logical CPUs, averaging 4 runs per setting.
 Results are shown as two bar charts (AVX2 in blue, Scalar in orange), both on
 the same Mpix/s scale. Hover over a bar to see the exact value.
+
+### CLI benchmark
+
+Runs all render paths (AVX2 and scalar) single-threaded and prints a Mpix/s
+table — useful for regression detection after code changes.
+
+**Windows (cmd.exe)** — stdout must be redirected because the exe uses the
+Windows GUI subsystem:
+
+```
+fractal_xplorer.exe --benchmark > results.txt
+type results.txt
+```
+
+**MSYS2 / bash** — redirect not needed:
+
+```bash
+./fractal_xplorer.exe --benchmark
+```
 
 ---
 

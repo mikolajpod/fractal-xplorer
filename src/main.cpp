@@ -10,8 +10,10 @@
 #include "cpu_renderer.hpp"
 #include "palette.hpp"
 #include "export.hpp"
+#include "cli_benchmark.hpp"
 
 #include <algorithm>
+#include <cstring>
 #include <cctype>
 #include <cmath>
 #include <cstdio>
@@ -63,6 +65,11 @@ static GlTex g_mini_tex;
 // ---------------------------------------------------------------------------
 int main(int argc, char* argv[])
 {
+    // CLI benchmark mode — no GUI needed
+    if (argc >= 2 && strcmp(argv[1], "--benchmark") == 0) {
+        return run_cli_benchmark();
+    }
+
     if (SDL_Init(SDL_INIT_VIDEO) != 0) {
         fprintf(stderr, "SDL_Init error: %s\n", SDL_GetError());
         return 1;

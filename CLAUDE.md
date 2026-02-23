@@ -92,6 +92,7 @@ Do not change this layout without updating all three output paths.
 | `palette.cpp` | `init_palettes()` — 8 palettes built from color stops at startup |
 | `export.hpp/.cpp` | `export_png()`, `export_jxl()` (guarded by `HAVE_JXL`) |
 | `main.cpp` | App entry point: render loop, ImGui UI, navigation, dialogs |
+| `cli_benchmark.hpp` | `run_cli_benchmark()` — CLI perf test, invoked via `--benchmark` flag |
 
 ---
 
@@ -220,6 +221,21 @@ Also increment `PALETTE_COUNT` in `palette.hpp`.
 - AVX2 path must always have a scalar fallback (runtime `__builtin_cpu_supports`)
 - `CpuRenderer` owns the `ThreadPool` — do not share it
 - `set_thread_count(n)` destroys and recreates the pool; only call between renders
+
+## Performance Benchmark
+
+After any changes to iteration kernels or AVX2 code, run the CLI benchmark and
+compare against `benchmark_baseline.txt`:
+
+```bash
+./build/fractal_xplorer.exe --benchmark
+```
+
+Single-threaded, 1920×1080, 256 iter, 9 test cases covering all AVX2 kernel
+instantiations plus scalar fallbacks. Reports Mpix/s — higher is better.
+Baseline is stored in `benchmark_baseline.txt` (local, not committed).
+
+---
 
 ## Known Gotchas
 
