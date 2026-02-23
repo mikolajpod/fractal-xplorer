@@ -201,7 +201,7 @@ cmake -B build -G "MinGW Makefiles" -DCMAKE_PREFIX_PATH="/c/msys64/mingw64"
 cmake --build build -- -j$(nproc)
 ```
 
-**Package (produces `fractal_xplorer-1.5-win64.zip`):**
+**Package (produces `fractal_xplorer-1.6-win64.zip`):**
 
 ```bash
 bash package.sh
