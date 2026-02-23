@@ -8,6 +8,9 @@ fractal_xplorer-*/
 # ImGui layout (user-local)
 imgui.ini
 
+# Local benchmark baseline (machine-specific)
+benchmark_baseline.txt
+
 # Claude Code local settings
 .claude/
 
