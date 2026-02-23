@@ -159,7 +159,16 @@ int main(int argc, char* argv[])
 
     bool running = true;
     while (running) {
+        // Block until an SDL event arrives or 50 ms elapses.
+        // This eliminates busy-spinning when the app is idle.
+        // Mouse/keyboard input still wakes the loop immediately.
         SDL_Event event;
+        if (SDL_WaitEventTimeout(&event, 50)) {
+            ImGui_ImplSDL2_ProcessEvent(&event);
+            if (event.type == SDL_QUIT)
+                running = false;
+        }
+        // Drain any additional events that queued up.
         while (SDL_PollEvent(&event)) {
             ImGui_ImplSDL2_ProcessEvent(&event);
             if (event.type == SDL_QUIT)
