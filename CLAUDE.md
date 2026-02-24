@@ -13,6 +13,7 @@ adds new fractal types and UX improvements.
 - **Build:** CMake + FetchContent (ImGui fetched automatically; no vcpkg/Conan)
 - **PNG export:** libpng (`pacman -S mingw-w64-x86_64-libpng`)
 - **JXL export:** libjxl 0.11.1 (`pacman -S mingw-w64-x86_64-libjxl`)
+- **SLEEF:** SLEEF 3.9.0 (`pacman -S mingw-w64-x86_64-sleef`) — vectorized math for AVX2 kernels
 
 ## Hard Rules
 
@@ -85,7 +86,7 @@ Do not change this layout without updating all three output paths.
 | `renderer.hpp` | `IFractalRenderer` interface, `PixelBuffer` |
 | `fractal.hpp` | Scalar iteration kernels (Mandelbrot, Julia, Burning Ship, Mandelbar, Multibrot, Multijulia, Celtic, Buffalo) |
 | `fractal_avx.hpp` | Declarations for AVX2 entry points |
-| `cpu_renderer_avx.cpp` | AVX2+FMA kernels — compiled with `-O2 -mavx2 -mfma` |
+| `cpu_renderer_avx.cpp` | AVX2+FMA+SLEEF kernels — compiled with `-O2 -mavx2 -mfma` |
 | `cpu_renderer.hpp/.cpp` | Thread pool tile dispatch, AVX2 runtime detection, `set_thread_count()` |
 | `thread_pool.hpp` | `std::thread` pool with condition-variable task queue |
 | `palette.hpp` | LUT declaration, `palette_color()` inline, constants |
@@ -121,7 +122,11 @@ to the classic `log2(log2(|z|))` formula. Interior points return `max_iter` exac
 The AVX2 path accumulates `iters_d` by adding 1.0 per active lane per iteration
 (not `set1_pd(i+1)`), so `iters_d == i` at escape, matching the scalar formula.
 
-**AVX2 kernel structure** — `cpu_renderer_avx.cpp` contains two templates:
+**AVX2 smooth coloring** uses SLEEF `Sleef_logd4_u35` (vectorized log) instead of
+extracting to scalar, computing 4 logs, and reinserting. This applies to all three
+kernel templates.
+
+**AVX2 kernel structure** — `cpu_renderer_avx.cpp` contains three templates:
 - `avx2_kernel<IsJulia, IsBurningShip, IsMandelbar, AbsRe, AbsIm>` — for degree-2
   formulas; 12 public wrappers cover all (formula × julia_mode) combinations;
   uses FMA squaring for Standard/Mandelbar/BurningShip; Celtic uses `AbsRe=true`,
@@ -129,9 +134,16 @@ The AVX2 path accumulates `iters_d` by adding 1.0 per active lane per iteration
 - `avx2_multibrot_kernel<IsJulia, IsMandelbar>` — for integer exponent ≥ 2; uses
   repeated complex multiplication (no trig), smooth coloring with `log(exp_n)`;
   covers MultiFast and Mandelbar with n≥3, both in Mandelbrot and Julia mode
+- `avx2_multibrot_slow_kernel<IsJulia>` — for real exponent (MultiSlow); uses
+  polar-form z^n via SLEEF vectorized log, exp, atan2, sincos; 2 public wrappers
+  (`avx2_multibrot_slow_4` / `avx2_multijulia_slow_4`)
 
 `n=2` for Standard dispatches to `avx2_mandelbrot_4` / `avx2_julia_4`;
-`n≥3` dispatches to `avx2_multibrot_4` / `avx2_multijulia_4`.
+`n≥3` (integer) dispatches to `avx2_multibrot_4` / `avx2_multijulia_4`;
+real exponent dispatches to `avx2_multibrot_slow_4` / `avx2_multijulia_slow_4`.
+
+When `multibrot_exp_f` is an exact integer (detected by `slow_int_n` in `render_tile()`),
+MultiSlow routes to the fast integer kernel instead of the polar-form kernel.
 
 **Formula + Julia mode** — `ViewState` has two orthogonal dimensions:
 - `FormulaType formula` — which iteration rule to apply (7 values)
@@ -159,7 +171,7 @@ enum class FormulaType {
     Buffalo     = 3,  // |Re(z^2)| + i|Im(z^2)| + c
     Mandelbar   = 4,  // conj(z)^n + c  (integer exp 2-8)
     MultiFast   = 5,  // z^n + c  (integer exp 2-8, AVX2)
-    MultiSlow   = 6,  // z^n + c  (real exp, scalar)
+    MultiSlow   = 6,  // z^n + c  (real exp, AVX2 polar form via SLEEF)
 };
 constexpr int FORMULA_COUNT = 7;
 ```
