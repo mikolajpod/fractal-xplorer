@@ -37,6 +37,7 @@ set(IMGUI_SOURCES
 
 add_executable(fractal_xplorer
     src/main.cpp
+    src/ui_panels.cpp
     src/cpu_renderer.cpp
     src/cpu_renderer_avx.cpp
     src/palette.cpp
