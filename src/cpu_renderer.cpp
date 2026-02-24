@@ -57,9 +57,7 @@ void CpuRenderer::render_tile(const ViewState& vs, PixelBuffer& buf,
         const int    end = std::min(tx + tw, W);
 
         // AVX2 path: 4 pixels per iteration.
-        // MultiSlow bypasses AVX2 unless the exponent is an integer.
-        const bool use_avx2_here = use_avx2 &&
-            (vs.formula != FormulaType::MultiSlow || slow_int_n > 0);
+        const bool use_avx2_here = use_avx2;
 
         if (use_avx2_here) {
             for (; px + 4 <= end; px += 4) {
@@ -116,20 +114,32 @@ void CpuRenderer::render_tile(const ViewState& vs, PixelBuffer& buf,
                         }
                         break;
                     case FormulaType::MultiSlow:
-                        if (vs.julia_mode) {
-                            if (slow_int_n == 2)
-                                avx2_julia_4(re0, scale, im, vs.max_iter,
-                                             vs.julia_re, vs.julia_im, smooth4);
-                            else
-                                avx2_multijulia_4(re0, scale, im, vs.max_iter,
-                                                  slow_int_n,
-                                                  vs.julia_re, vs.julia_im, smooth4);
+                        if (slow_int_n > 0) {
+                            // Integer exponent: use fast repeated-multiply kernel
+                            if (vs.julia_mode) {
+                                if (slow_int_n == 2)
+                                    avx2_julia_4(re0, scale, im, vs.max_iter,
+                                                 vs.julia_re, vs.julia_im, smooth4);
+                                else
+                                    avx2_multijulia_4(re0, scale, im, vs.max_iter,
+                                                      slow_int_n,
+                                                      vs.julia_re, vs.julia_im, smooth4);
+                            } else {
+                                if (slow_int_n == 2)
+                                    avx2_mandelbrot_4(re0, scale, im, vs.max_iter, smooth4);
+                                else
+                                    avx2_multibrot_4(re0, scale, im, vs.max_iter,
+                                                     slow_int_n, smooth4);
+                            }
                         } else {
-                            if (slow_int_n == 2)
-                                avx2_mandelbrot_4(re0, scale, im, vs.max_iter, smooth4);
+                            // Real exponent: polar-form kernel (SLEEF)
+                            if (vs.julia_mode)
+                                avx2_multijulia_slow_4(re0, scale, im, vs.max_iter,
+                                                        vs.multibrot_exp_f,
+                                                        vs.julia_re, vs.julia_im, smooth4);
                             else
-                                avx2_multibrot_4(re0, scale, im, vs.max_iter,
-                                                 slow_int_n, smooth4);
+                                avx2_multibrot_slow_4(re0, scale, im, vs.max_iter,
+                                                       vs.multibrot_exp_f, smooth4);
                         }
                         break;
                     case FormulaType::Celtic:
@@ -236,14 +246,7 @@ void CpuRenderer::render_tile(const ViewState& vs, PixelBuffer& buf,
 // -----------------------------------------------------------------------
 void CpuRenderer::render(const ViewState& vs, PixelBuffer& buf)
 {
-    // Update avx2_active to reflect the actual path for this render.
-    // MultiSlow with a non-integer exponent falls back to scalar.
-    if (use_avx2 && vs.formula == FormulaType::MultiSlow) {
-        const int n = static_cast<int>(std::round(vs.multibrot_exp_f));
-        avx2_active = (n >= 2 && std::abs(vs.multibrot_exp_f - n) < 1e-9);
-    } else {
-        avx2_active = use_avx2;
-    }
+    avx2_active = use_avx2;
 
     using clock = std::chrono::steady_clock;
     const auto t0 = clock::now();

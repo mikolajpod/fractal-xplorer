@@ -55,3 +55,10 @@ void avx2_buffalo_4(double re0, double scale, double im,
                     int max_iter, double* out4);
 void avx2_buffalo_julia_4(double re0, double scale, double im,
                            int max_iter, double julia_re, double julia_im, double* out4);
+
+// MultiSlow: real-exponent z^n+c via polar form (SLEEF trig/exp)
+void avx2_multibrot_slow_4(double re0, double scale, double im,
+                            int max_iter, double exp_n, double* out4);
+void avx2_multijulia_slow_4(double re0, double scale, double im,
+                              int max_iter, double exp_n,
+                              double julia_re, double julia_im, double* out4);

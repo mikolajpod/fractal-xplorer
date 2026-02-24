@@ -243,6 +243,91 @@ void avx2_mandelbar_multi_4(double re0, double scale, double im,
     avx2_multibrot_kernel<false, true>(re0, scale, im, max_iter, exp_n, 0.0, 0.0, out4);
 }
 
+// -----------------------------------------------------------------------
+// AVX2 kernel for real-exponent Multibrot/Multijulia (MultiSlow).
+// Uses polar form: z^n = |z|^n * e^(i*n*theta), vectorized with SLEEF.
+// -----------------------------------------------------------------------
+template<bool IsJulia>
+static void avx2_multibrot_slow_kernel(double re0, double scale, double im,
+                                        int max_iter, double exp_n,
+                                        double c_re, double c_im, double* out4)
+{
+    __m256d re4 = _mm256_set_pd(re0 + 3.0*scale, re0 + 2.0*scale,
+                                 re0 +     scale,  re0);
+    __m256d cr, ci, zr, zi;
+    if constexpr (IsJulia) {
+        cr = _mm256_set1_pd(c_re);
+        ci = _mm256_set1_pd(c_im);
+        zr = re4;
+        zi = _mm256_set1_pd(im);
+    } else {
+        cr = re4;
+        ci = _mm256_set1_pd(im);
+        zr = _mm256_setzero_pd();
+        zi = _mm256_setzero_pd();
+    }
+
+    const __m256d four  = _mm256_set1_pd(4.0);
+    const __m256d one   = _mm256_set1_pd(1.0);
+    const __m256d exp_v = _mm256_set1_pd(exp_n);
+    const __m256d half  = _mm256_set1_pd(0.5);
+
+    __m256d active   = _mm256_castsi256_pd(_mm256_set1_epi64x(-1LL));
+    __m256d iters_d  = _mm256_setzero_pd();
+    __m256d final_r2 = _mm256_set1_pd(4.0);
+
+    for (int i = 0; i < max_iter; ++i) {
+        const __m256d zr2  = _mm256_mul_pd(zr, zr);
+        const __m256d zi2  = _mm256_mul_pd(zi, zi);
+        const __m256d mag2 = _mm256_add_pd(zr2, zi2);
+
+        const __m256d just_esc = _mm256_and_pd(
+            _mm256_cmp_pd(mag2, four, _CMP_GT_OQ), active);
+        final_r2 = _mm256_blendv_pd(final_r2, mag2, just_esc);
+        active   = _mm256_andnot_pd(just_esc, active);
+
+        if (_mm256_movemask_pd(active) == 0) break;
+
+        // z^n via polar form: r_n = |z|^n, theta = arg(z)
+        __m256d log_mag = _mm256_mul_pd(Sleef_logd4_u35(mag2), half);
+        __m256d r_n     = Sleef_expd4_u10(_mm256_mul_pd(exp_v, log_mag));
+        __m256d theta   = Sleef_atan2d4_u10(zi, zr);
+        __m256d n_theta = _mm256_mul_pd(exp_v, theta);
+        Sleef___m256d_2 sc = Sleef_sincosd4_u10(n_theta);
+        __m256d new_zr = _mm256_add_pd(_mm256_mul_pd(r_n, sc.y), cr);
+        __m256d new_zi = _mm256_add_pd(_mm256_mul_pd(r_n, sc.x), ci);
+
+        zr = _mm256_blendv_pd(zr, new_zr, active);
+        zi = _mm256_blendv_pd(zi, new_zi, active);
+        iters_d = _mm256_add_pd(iters_d, _mm256_and_pd(active, one));
+    }
+
+    // Vectorized smooth coloring using SLEEF
+    const __m256d max_d_v  = _mm256_set1_pd(static_cast<double>(max_iter));
+    const __m256d inv_logn = _mm256_set1_pd(1.0 / std::log(exp_n));
+    const __m256d one_v    = _mm256_set1_pd(1.0);
+    const __m256d zero_v   = _mm256_setzero_pd();
+
+    __m256d log_zn = _mm256_mul_pd(Sleef_logd4_u35(final_r2), half);
+    __m256d nu     = _mm256_mul_pd(Sleef_logd4_u35(_mm256_mul_pd(log_zn, inv_logn)), inv_logn);
+    __m256d smooth = _mm256_max_pd(zero_v, _mm256_sub_pd(_mm256_add_pd(iters_d, one_v), nu));
+    __m256d result = _mm256_blendv_pd(smooth, max_d_v, active);
+    _mm256_storeu_pd(out4, result);
+}
+
+void avx2_multibrot_slow_4(double re0, double scale, double im,
+                            int max_iter, double exp_n, double* out4)
+{
+    avx2_multibrot_slow_kernel<false>(re0, scale, im, max_iter, exp_n, 0.0, 0.0, out4);
+}
+
+void avx2_multijulia_slow_4(double re0, double scale, double im,
+                              int max_iter, double exp_n,
+                              double julia_re, double julia_im, double* out4)
+{
+    avx2_multibrot_slow_kernel<true>(re0, scale, im, max_iter, exp_n, julia_re, julia_im, out4);
+}
+
 void avx2_burning_ship_julia_4(double re0, double scale, double im,
                                 int max_iter, double julia_re, double julia_im,
                                 double* out4)
