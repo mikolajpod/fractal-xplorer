@@ -97,6 +97,22 @@ void draw_side_panel(AppState& app, const ImGuiIO& io, float menu_h, float fh)
         }
     }
 
+    // --- Color mode ---
+    ImGui::Spacing();
+    ImGui::TextDisabled("COLOR MODE");
+    ImGui::Separator();
+    {
+        static const char* mode_names[] = {
+            "Smooth (escape-time)", "Lyapunov (interior)", "Lyapunov (full)" };
+        ImGui::SetNextItemWidth(-1.0f);
+        if (ImGui::Combo("##colormode", &app.vs.color_mode, mode_names, COLOR_MODE_COUNT))
+            app.dirty = true;
+        if (ImGui::IsItemHovered() && io.MouseWheel != 0.0f) {
+            app.vs.color_mode = (app.vs.color_mode + (io.MouseWheel < 0.0f ? 1 : -1) + COLOR_MODE_COUNT) % COLOR_MODE_COUNT;
+            app.dirty = true;
+        }
+    }
+
     // --- Palette ---
     ImGui::Spacing();
     ImGui::TextDisabled("PALETTE");

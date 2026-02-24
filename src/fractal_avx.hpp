@@ -1,5 +1,7 @@
 #pragma once
 
+#include "view_state.hpp"   // FormulaType
+
 // AVX2 accelerated fractal kernels — implementations in cpu_renderer_avx.cpp
 // Each function computes 4 consecutive horizontal pixels at once.
 // re0:   real coordinate of the leftmost of the 4 pixels
@@ -62,3 +64,11 @@ void avx2_multibrot_slow_4(double re0, double scale, double im,
 void avx2_multijulia_slow_4(double re0, double scale, double im,
                               int max_iter, double exp_n,
                               double julia_re, double julia_im, double* out4);
+
+// Lyapunov dispatch — computes both smooth and lambda for 4 pixels.
+// Covers all formula x julia_mode combinations internally.
+void avx2_lyapunov_4(FormulaType formula, bool julia_mode,
+                      double re0, double scale, double im,
+                      int max_iter, int exp_i, double exp_f,
+                      double julia_re, double julia_im,
+                      double* smooth4, double* lyap4);

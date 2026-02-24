@@ -11,6 +11,13 @@ enum class FormulaType {
 };
 constexpr int FORMULA_COUNT = 7;
 
+enum ColorMode {
+    COLOR_SMOOTH            = 0,
+    COLOR_LYAPUNOV_INTERIOR = 1,
+    COLOR_LYAPUNOV_FULL     = 2,
+};
+constexpr int COLOR_MODE_COUNT = 3;
+
 struct ViewState {
     double      center_x        =  0.0;
     double      center_y        =  0.0;
@@ -24,6 +31,7 @@ struct ViewState {
     int         pal_offset      =  0;
     int         multibrot_exp   =  2;    // integer exponent for Mandelbar/MultiFast (2-8)
     double      multibrot_exp_f =  3.0;  // float exponent for MultiSlow
+    int         color_mode      =  0;    // ColorMode: 0=smooth, 1=lyap interior, 2=lyap full
 };
 
 inline double zoom_display(const ViewState& vs)
@@ -69,6 +77,7 @@ inline void reset_view_keep_params(ViewState& vs, FormulaType new_formula, bool 
     const int         mexp  = vs.multibrot_exp;
     const double      mexpf = vs.multibrot_exp_f;
     const int         iter  = vs.max_iter;
+    const int         cmode = vs.color_mode;
     vs                = default_view_for(new_formula);
     vs.formula        = new_formula;
     vs.julia_mode     = new_julia_mode;
@@ -79,4 +88,5 @@ inline void reset_view_keep_params(ViewState& vs, FormulaType new_formula, bool 
     vs.multibrot_exp  = mexp;
     vs.multibrot_exp_f = mexpf;
     vs.max_iter       = iter;
+    vs.color_mode     = cmode;
 }

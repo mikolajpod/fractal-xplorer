@@ -17,9 +17,10 @@
 //  - z update uses FMA (_mm256_fmadd_pd / _mm256_fnmadd_pd)
 // -----------------------------------------------------------------------
 template<bool IsJulia, bool IsBurningShip, bool IsMandelbar,
-         bool AbsRe = false, bool AbsIm = false>
+         bool AbsRe = false, bool AbsIm = false, bool ComputeLyapunov = false>
 static void avx2_kernel(double re0, double scale, double im, int max_iter,
-                        double c_re, double c_im, double* out4)
+                        double c_re, double c_im, double* out4,
+                        double* lyap_out4 = nullptr)
 {
     __m256d re4 = _mm256_set_pd(re0 + 3.0*scale, re0 + 2.0*scale,
                                  re0 +     scale,  re0);
@@ -48,10 +49,31 @@ static void avx2_kernel(double re0, double scale, double im, int max_iter,
     __m256d iters_d  = _mm256_setzero_pd();
     __m256d final_r2 = _mm256_set1_pd(4.0);
 
+    // Lyapunov accumulators (degree 2: log|f'| = log(2) + 0.5*log(|z|^2))
+    __m256d log_deriv_sum, lyap_n_iters;
+    __m256d log_n_v, nm1_half_v;
+    if constexpr (ComputeLyapunov) {
+        log_deriv_sum = _mm256_setzero_pd();
+        lyap_n_iters  = _mm256_setzero_pd();
+        log_n_v       = _mm256_set1_pd(std::log(2.0));
+        nm1_half_v    = _mm256_set1_pd(0.5);
+    }
+
     for (int i = 0; i < max_iter; ++i) {
         const __m256d zr2  = _mm256_mul_pd(zr, zr);
         const __m256d zi2  = _mm256_mul_pd(zi, zi);
         const __m256d mag2 = _mm256_add_pd(zr2, zi2);
+
+        // Lyapunov: accumulate log|f'(z)| for active lanes with mag2 > eps
+        if constexpr (ComputeLyapunov) {
+            __m256d safe_mag2 = _mm256_max_pd(mag2, _mm256_set1_pd(1e-300));
+            __m256d log_mag2  = Sleef_logd4_u35(safe_mag2);
+            __m256d log_deriv = _mm256_fmadd_pd(nm1_half_v, log_mag2, log_n_v);
+            __m256d accum_mask = _mm256_and_pd(active,
+                _mm256_cmp_pd(mag2, _mm256_set1_pd(1e-200), _CMP_GT_OQ));
+            log_deriv_sum = _mm256_add_pd(log_deriv_sum, _mm256_and_pd(accum_mask, log_deriv));
+            lyap_n_iters  = _mm256_add_pd(lyap_n_iters,  _mm256_and_pd(accum_mask, one));
+        }
 
         // Lanes escaping this iteration (mag2 > 4 AND still active)
         const __m256d just_esc = _mm256_and_pd(
@@ -113,6 +135,12 @@ static void avx2_kernel(double re0, double scale, double im, int max_iter,
     // Interior points (still active) get max_iter; escaped points get smooth value
     __m256d result = _mm256_blendv_pd(smooth, max_d_v, active);
     _mm256_storeu_pd(out4, result);
+
+    if constexpr (ComputeLyapunov) {
+        __m256d safe_n = _mm256_max_pd(lyap_n_iters, one_v);
+        __m256d lambda = _mm256_div_pd(log_deriv_sum, safe_n);
+        _mm256_storeu_pd(lyap_out4, lambda);
+    }
 }
 
 // -----------------------------------------------------------------------
@@ -148,9 +176,10 @@ void avx2_mandelbar_4(double re0, double scale, double im,
 // Uses repeated complex multiplication to compute z^n without trig.
 // Smooth coloring uses log(exp_n) as the base instead of log(2).
 // -----------------------------------------------------------------------
-template<bool IsJulia, bool IsMandelbar = false>
+template<bool IsJulia, bool IsMandelbar = false, bool ComputeLyapunov = false>
 static void avx2_multibrot_kernel(double re0, double scale, double im, int max_iter,
-                                   int exp_n, double c_re, double c_im, double* out4)
+                                   int exp_n, double c_re, double c_im, double* out4,
+                                   double* lyap_out4 = nullptr)
 {
     __m256d re4 = _mm256_set_pd(re0 + 3.0*scale, re0 + 2.0*scale,
                                  re0 +     scale,  re0);
@@ -175,10 +204,30 @@ static void avx2_multibrot_kernel(double re0, double scale, double im, int max_i
     __m256d iters_d  = _mm256_setzero_pd();
     __m256d final_r2 = _mm256_set1_pd(4.0);
 
+    // Lyapunov accumulators
+    __m256d log_deriv_sum, lyap_n_iters;
+    __m256d log_n_v, nm1_half_v;
+    if constexpr (ComputeLyapunov) {
+        log_deriv_sum = _mm256_setzero_pd();
+        lyap_n_iters  = _mm256_setzero_pd();
+        log_n_v       = _mm256_set1_pd(std::log(static_cast<double>(exp_n)));
+        nm1_half_v    = _mm256_set1_pd((exp_n - 1) / 2.0);
+    }
+
     for (int i = 0; i < max_iter; ++i) {
         const __m256d zr2  = _mm256_mul_pd(zr, zr);
         const __m256d zi2  = _mm256_mul_pd(zi, zi);
         const __m256d mag2 = _mm256_add_pd(zr2, zi2);
+
+        if constexpr (ComputeLyapunov) {
+            __m256d safe_mag2 = _mm256_max_pd(mag2, _mm256_set1_pd(1e-300));
+            __m256d log_mag2  = Sleef_logd4_u35(safe_mag2);
+            __m256d log_deriv = _mm256_fmadd_pd(nm1_half_v, log_mag2, log_n_v);
+            __m256d accum_mask = _mm256_and_pd(active,
+                _mm256_cmp_pd(mag2, _mm256_set1_pd(1e-200), _CMP_GT_OQ));
+            log_deriv_sum = _mm256_add_pd(log_deriv_sum, _mm256_and_pd(accum_mask, log_deriv));
+            lyap_n_iters  = _mm256_add_pd(lyap_n_iters,  _mm256_and_pd(accum_mask, one));
+        }
 
         const __m256d just_esc = _mm256_and_pd(
             _mm256_cmp_pd(mag2, four, _CMP_GT_OQ), active);
@@ -222,6 +271,12 @@ static void avx2_multibrot_kernel(double re0, double scale, double im, int max_i
     // Interior points (still active) get max_iter; escaped points get smooth value
     __m256d result = _mm256_blendv_pd(smooth, max_d_v, active);
     _mm256_storeu_pd(out4, result);
+
+    if constexpr (ComputeLyapunov) {
+        __m256d safe_n = _mm256_max_pd(lyap_n_iters, one_v);
+        __m256d lambda = _mm256_div_pd(log_deriv_sum, safe_n);
+        _mm256_storeu_pd(lyap_out4, lambda);
+    }
 }
 
 void avx2_multibrot_4(double re0, double scale, double im,
@@ -247,10 +302,11 @@ void avx2_mandelbar_multi_4(double re0, double scale, double im,
 // AVX2 kernel for real-exponent Multibrot/Multijulia (MultiSlow).
 // Uses polar form: z^n = |z|^n * e^(i*n*theta), vectorized with SLEEF.
 // -----------------------------------------------------------------------
-template<bool IsJulia>
+template<bool IsJulia, bool ComputeLyapunov = false>
 static void avx2_multibrot_slow_kernel(double re0, double scale, double im,
                                         int max_iter, double exp_n,
-                                        double c_re, double c_im, double* out4)
+                                        double c_re, double c_im, double* out4,
+                                        double* lyap_out4 = nullptr)
 {
     __m256d re4 = _mm256_set_pd(re0 + 3.0*scale, re0 + 2.0*scale,
                                  re0 +     scale,  re0);
@@ -276,10 +332,30 @@ static void avx2_multibrot_slow_kernel(double re0, double scale, double im,
     __m256d iters_d  = _mm256_setzero_pd();
     __m256d final_r2 = _mm256_set1_pd(4.0);
 
+    // Lyapunov accumulators
+    __m256d log_deriv_sum, lyap_n_iters;
+    __m256d log_n_v, nm1_half_v;
+    if constexpr (ComputeLyapunov) {
+        log_deriv_sum = _mm256_setzero_pd();
+        lyap_n_iters  = _mm256_setzero_pd();
+        log_n_v       = _mm256_set1_pd(std::log(exp_n));
+        nm1_half_v    = _mm256_set1_pd((exp_n - 1.0) / 2.0);
+    }
+
     for (int i = 0; i < max_iter; ++i) {
         const __m256d zr2  = _mm256_mul_pd(zr, zr);
         const __m256d zi2  = _mm256_mul_pd(zi, zi);
         const __m256d mag2 = _mm256_add_pd(zr2, zi2);
+
+        if constexpr (ComputeLyapunov) {
+            __m256d safe_mag2 = _mm256_max_pd(mag2, _mm256_set1_pd(1e-300));
+            __m256d log_mag2  = Sleef_logd4_u35(safe_mag2);
+            __m256d log_deriv = _mm256_fmadd_pd(nm1_half_v, log_mag2, log_n_v);
+            __m256d accum_mask = _mm256_and_pd(active,
+                _mm256_cmp_pd(mag2, _mm256_set1_pd(1e-200), _CMP_GT_OQ));
+            log_deriv_sum = _mm256_add_pd(log_deriv_sum, _mm256_and_pd(accum_mask, log_deriv));
+            lyap_n_iters  = _mm256_add_pd(lyap_n_iters,  _mm256_and_pd(accum_mask, one));
+        }
 
         const __m256d just_esc = _mm256_and_pd(
             _mm256_cmp_pd(mag2, four, _CMP_GT_OQ), active);
@@ -313,6 +389,12 @@ static void avx2_multibrot_slow_kernel(double re0, double scale, double im,
     __m256d smooth = _mm256_max_pd(zero_v, _mm256_sub_pd(_mm256_add_pd(iters_d, one_v), nu));
     __m256d result = _mm256_blendv_pd(smooth, max_d_v, active);
     _mm256_storeu_pd(out4, result);
+
+    if constexpr (ComputeLyapunov) {
+        __m256d safe_n = _mm256_max_pd(lyap_n_iters, one_v);
+        __m256d lambda = _mm256_div_pd(log_deriv_sum, safe_n);
+        _mm256_storeu_pd(lyap_out4, lambda);
+    }
 }
 
 void avx2_multibrot_slow_4(double re0, double scale, double im,
@@ -375,4 +457,97 @@ void avx2_buffalo_julia_4(double re0, double scale, double im,
                            int max_iter, double julia_re, double julia_im, double* out4)
 {
     avx2_kernel<true, false, false, true, true>(re0, scale, im, max_iter, julia_re, julia_im, out4);
+}
+
+// -----------------------------------------------------------------------
+// Lyapunov dispatch — computes both smooth and lambda for 4 pixels.
+// -----------------------------------------------------------------------
+void avx2_lyapunov_4(FormulaType formula, bool julia_mode,
+                      double re0, double scale, double im,
+                      int max_iter, int exp_i, double exp_f,
+                      double julia_re, double julia_im,
+                      double* smooth4, double* lyap4)
+{
+    // For MultiSlow: if float exponent is effectively an integer, promote
+    const int slow_int_n = [&]() -> int {
+        if (formula != FormulaType::MultiSlow) return 0;
+        const int n = static_cast<int>(std::round(exp_f));
+        return (n >= 2 && std::abs(exp_f - n) < 1e-9) ? n : 0;
+    }();
+
+    switch (formula) {
+        case FormulaType::Standard:
+            if (julia_mode)
+                avx2_kernel<true,false,false,false,false,true>(re0,scale,im,max_iter,julia_re,julia_im,smooth4,lyap4);
+            else
+                avx2_kernel<false,false,false,false,false,true>(re0,scale,im,max_iter,0.0,0.0,smooth4,lyap4);
+            break;
+        case FormulaType::BurningShip:
+            if (julia_mode)
+                avx2_kernel<true,true,false,false,false,true>(re0,scale,im,max_iter,julia_re,julia_im,smooth4,lyap4);
+            else
+                avx2_kernel<false,true,false,false,false,true>(re0,scale,im,max_iter,0.0,0.0,smooth4,lyap4);
+            break;
+        case FormulaType::Celtic:
+            if (julia_mode)
+                avx2_kernel<true,false,false,true,false,true>(re0,scale,im,max_iter,julia_re,julia_im,smooth4,lyap4);
+            else
+                avx2_kernel<false,false,false,true,false,true>(re0,scale,im,max_iter,0.0,0.0,smooth4,lyap4);
+            break;
+        case FormulaType::Buffalo:
+            if (julia_mode)
+                avx2_kernel<true,false,false,true,true,true>(re0,scale,im,max_iter,julia_re,julia_im,smooth4,lyap4);
+            else
+                avx2_kernel<false,false,false,true,true,true>(re0,scale,im,max_iter,0.0,0.0,smooth4,lyap4);
+            break;
+        case FormulaType::Mandelbar:
+            if (julia_mode) {
+                if (exp_i == 2)
+                    avx2_kernel<true,false,true,false,false,true>(re0,scale,im,max_iter,julia_re,julia_im,smooth4,lyap4);
+                else
+                    avx2_multibrot_kernel<true,true,true>(re0,scale,im,max_iter,exp_i,julia_re,julia_im,smooth4,lyap4);
+            } else {
+                if (exp_i == 2)
+                    avx2_kernel<false,false,true,false,false,true>(re0,scale,im,max_iter,0.0,0.0,smooth4,lyap4);
+                else
+                    avx2_multibrot_kernel<false,true,true>(re0,scale,im,max_iter,exp_i,0.0,0.0,smooth4,lyap4);
+            }
+            break;
+        case FormulaType::MultiFast:
+            if (julia_mode) {
+                if (exp_i == 2)
+                    avx2_kernel<true,false,false,false,false,true>(re0,scale,im,max_iter,julia_re,julia_im,smooth4,lyap4);
+                else
+                    avx2_multibrot_kernel<true,false,true>(re0,scale,im,max_iter,exp_i,julia_re,julia_im,smooth4,lyap4);
+            } else {
+                if (exp_i == 2)
+                    avx2_kernel<false,false,false,false,false,true>(re0,scale,im,max_iter,0.0,0.0,smooth4,lyap4);
+                else
+                    avx2_multibrot_kernel<false,false,true>(re0,scale,im,max_iter,exp_i,0.0,0.0,smooth4,lyap4);
+            }
+            break;
+        case FormulaType::MultiSlow:
+            if (slow_int_n > 0) {
+                if (julia_mode) {
+                    if (slow_int_n == 2)
+                        avx2_kernel<true,false,false,false,false,true>(re0,scale,im,max_iter,julia_re,julia_im,smooth4,lyap4);
+                    else
+                        avx2_multibrot_kernel<true,false,true>(re0,scale,im,max_iter,slow_int_n,julia_re,julia_im,smooth4,lyap4);
+                } else {
+                    if (slow_int_n == 2)
+                        avx2_kernel<false,false,false,false,false,true>(re0,scale,im,max_iter,0.0,0.0,smooth4,lyap4);
+                    else
+                        avx2_multibrot_kernel<false,false,true>(re0,scale,im,max_iter,slow_int_n,0.0,0.0,smooth4,lyap4);
+                }
+            } else {
+                if (julia_mode)
+                    avx2_multibrot_slow_kernel<true,true>(re0,scale,im,max_iter,exp_f,julia_re,julia_im,smooth4,lyap4);
+                else
+                    avx2_multibrot_slow_kernel<false,true>(re0,scale,im,max_iter,exp_f,0.0,0.0,smooth4,lyap4);
+            }
+            break;
+        default:
+            avx2_kernel<false,false,false,false,false,true>(re0,scale,im,max_iter,0.0,0.0,smooth4,lyap4);
+            break;
+    }
 }

@@ -24,3 +24,13 @@ inline uint32_t palette_color(double smooth, int max_iter, int palette, int pal_
     if (idx < 0) idx += LUT_SIZE;
     return g_palette_lut[palette][idx];
 }
+
+// Map a Lyapunov exponent to a 32-bit RGBA pixel.
+static constexpr double LYAP_SCALE = 200.0;
+
+inline uint32_t lyapunov_color(double lambda, int palette, int pal_offset)
+{
+    int idx = (static_cast<int>(lambda * LYAP_SCALE) + pal_offset) % LUT_SIZE;
+    if (idx < 0) idx += LUT_SIZE;
+    return g_palette_lut[palette][idx];
+}
