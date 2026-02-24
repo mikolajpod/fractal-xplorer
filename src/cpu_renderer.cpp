@@ -236,6 +236,15 @@ void CpuRenderer::render_tile(const ViewState& vs, PixelBuffer& buf,
 // -----------------------------------------------------------------------
 void CpuRenderer::render(const ViewState& vs, PixelBuffer& buf)
 {
+    // Update avx2_active to reflect the actual path for this render.
+    // MultiSlow with a non-integer exponent falls back to scalar.
+    if (use_avx2 && vs.formula == FormulaType::MultiSlow) {
+        const int n = static_cast<int>(std::round(vs.multibrot_exp_f));
+        avx2_active = (n >= 2 && std::abs(vs.multibrot_exp_f - n) < 1e-9);
+    } else {
+        avx2_active = use_avx2;
+    }
+
     using clock = std::chrono::steady_clock;
     const auto t0 = clock::now();
 

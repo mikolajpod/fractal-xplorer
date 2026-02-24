@@ -79,8 +79,15 @@ inline int run_cli_benchmark()
         double mpixs = (W * H) / (avg_ms * 1000.0);
 
         const char* path_label = "scalar";
-        if (!t.force_scalar && has_avx2 && t.formula != FormulaType::MultiSlow)
-            path_label = "AVX2";
+        if (!t.force_scalar && has_avx2) {
+            if (t.formula == FormulaType::MultiSlow) {
+                const int n = static_cast<int>(std::round(vs.multibrot_exp_f));
+                if (n >= 2 && std::abs(vs.multibrot_exp_f - n) < 1e-9)
+                    path_label = "AVX2";
+            } else {
+                path_label = "AVX2";
+            }
+        }
 
         printf("%-30s %-10s %6.2f\n", t.label, path_label, mpixs);
     }
