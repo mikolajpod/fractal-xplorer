@@ -91,7 +91,9 @@ Do not change this layout without updating all three output paths.
 | `palette.hpp` | LUT declaration, `palette_color()` inline, constants |
 | `palette.cpp` | `init_palettes()` — 8 palettes built from color stops at startup |
 | `export.hpp/.cpp` | `export_png()`, `export_jxl()` (guarded by `HAVE_JXL`) |
-| `main.cpp` | App entry point: render loop, ImGui UI, navigation, dialogs |
+| `app_state.hpp` | `GlTex` GL texture helper + `AppState` struct (all mutable application state) |
+| `ui_panels.hpp/.cpp` | Side panel, export/benchmark/about dialogs — extracted from `main.cpp` |
+| `main.cpp` | App entry point: SDL/GL init, render loop, navigation input |
 | `cli_benchmark.hpp` | `run_cli_benchmark()` — CLI perf test, invoked via `--benchmark` flag |
 
 ---
