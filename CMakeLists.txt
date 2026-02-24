@@ -10,11 +10,12 @@ find_package(SDL2 REQUIRED)
 # libpng - install via: pacman -S mingw-w64-x86_64-libpng
 find_package(PNG REQUIRED)
 
+# SLEEF - install via: pacman -S mingw-w64-x86_64-sleef
+find_package(PkgConfig REQUIRED)
+pkg_check_modules(SLEEF REQUIRED sleef)
+
 # libjxl (optional) - install via: pacman -S mingw-w64-x86_64-libjxl
-find_package(PkgConfig)
-if(PkgConfig_FOUND)
-    pkg_check_modules(LIBJXL libjxl)
-endif()
+pkg_check_modules(LIBJXL libjxl)
 
 # Dear ImGui - fetched automatically at configure time
 include(FetchContent)
@@ -48,6 +49,7 @@ add_executable(fractal_xplorer
 target_include_directories(fractal_xplorer PRIVATE
     ${imgui_SOURCE_DIR}
     ${imgui_SOURCE_DIR}/backends
+    ${SLEEF_INCLUDE_DIRS}
 )
 
 target_link_libraries(fractal_xplorer PRIVATE
@@ -55,6 +57,7 @@ target_link_libraries(fractal_xplorer PRIVATE
     SDL2::SDL2
     opengl32
     PNG::PNG
+    ${SLEEF_LINK_LIBRARIES}
 )
 
 if(LIBJXL_FOUND)

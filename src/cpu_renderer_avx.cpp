@@ -3,6 +3,7 @@
 #include "fractal_avx.hpp"
 
 #include <immintrin.h>
+#include <sleef.h>
 #include <algorithm>
 #include <cmath>
 
@@ -98,25 +99,20 @@ static void avx2_kernel(double re0, double scale, double im, int max_iter,
         iters_d = _mm256_add_pd(iters_d, _mm256_and_pd(active, one));
     }
 
-    // Extract results and apply smooth coloring
-    double iters_arr[4], r2_arr[4], active_arr[4];
-    _mm256_storeu_pd(iters_arr,  iters_d);
-    _mm256_storeu_pd(r2_arr,     final_r2);
-    _mm256_storeu_pd(active_arr, active);
+    // Vectorized smooth coloring using SLEEF
+    const __m256d max_d_v = _mm256_set1_pd(static_cast<double>(max_iter));
+    const __m256d inv_log2 = _mm256_set1_pd(1.0 / std::log(2.0));
+    const __m256d half     = _mm256_set1_pd(0.5);
+    const __m256d one_v    = _mm256_set1_pd(1.0);
+    const __m256d zero_v   = _mm256_setzero_pd();
 
-    const double max_d    = static_cast<double>(max_iter);
-    const double inv_log2 = 1.0 / std::log(2.0);
-
-    for (int k = 0; k < 4; ++k) {
-        if (active_arr[k] != 0.0) {
-            out4[k] = max_d;  // interior point
-        } else {
-            // smooth = iters + 1 - log2(log2(|z|))
-            const double log_zn = std::log(r2_arr[k]) * 0.5;
-            const double nu     = std::log(log_zn * inv_log2) * inv_log2;
-            out4[k] = std::max(0.0, iters_arr[k] + 1.0 - nu);
-        }
-    }
+    // smooth = iters + 1 - log2(log2(|z|))
+    __m256d log_zn = _mm256_mul_pd(Sleef_logd4_u35(final_r2), half);       // log(|z|)
+    __m256d nu     = _mm256_mul_pd(Sleef_logd4_u35(_mm256_mul_pd(log_zn, inv_log2)), inv_log2);
+    __m256d smooth = _mm256_max_pd(zero_v, _mm256_sub_pd(_mm256_add_pd(iters_d, one_v), nu));
+    // Interior points (still active) get max_iter; escaped points get smooth value
+    __m256d result = _mm256_blendv_pd(smooth, max_d_v, active);
+    _mm256_storeu_pd(out4, result);
 }
 
 // -----------------------------------------------------------------------
@@ -212,23 +208,20 @@ static void avx2_multibrot_kernel(double re0, double scale, double im, int max_i
         iters_d = _mm256_add_pd(iters_d, _mm256_and_pd(active, one));
     }
 
-    double iters_arr[4], r2_arr[4], active_arr[4];
-    _mm256_storeu_pd(iters_arr,  iters_d);
-    _mm256_storeu_pd(r2_arr,     final_r2);
-    _mm256_storeu_pd(active_arr, active);
+    // Vectorized smooth coloring using SLEEF
+    const __m256d max_d_v = _mm256_set1_pd(static_cast<double>(max_iter));
+    const __m256d inv_logn = _mm256_set1_pd(1.0 / std::log(static_cast<double>(exp_n)));
+    const __m256d half     = _mm256_set1_pd(0.5);
+    const __m256d one_v    = _mm256_set1_pd(1.0);
+    const __m256d zero_v   = _mm256_setzero_pd();
 
-    const double max_d    = static_cast<double>(max_iter);
-    const double inv_logn = 1.0 / std::log(static_cast<double>(exp_n));
-
-    for (int k = 0; k < 4; ++k) {
-        if (active_arr[k] != 0.0) {
-            out4[k] = max_d;
-        } else {
-            const double log_zn = std::log(r2_arr[k]) * 0.5;
-            const double nu     = std::log(log_zn * inv_logn) * inv_logn;
-            out4[k] = std::max(0.0, iters_arr[k] + 1.0 - nu);
-        }
-    }
+    // smooth = iters + 1 - log_n(log_n(|z|))
+    __m256d log_zn = _mm256_mul_pd(Sleef_logd4_u35(final_r2), half);       // log(|z|)
+    __m256d nu     = _mm256_mul_pd(Sleef_logd4_u35(_mm256_mul_pd(log_zn, inv_logn)), inv_logn);
+    __m256d smooth = _mm256_max_pd(zero_v, _mm256_sub_pd(_mm256_add_pd(iters_d, one_v), nu));
+    // Interior points (still active) get max_iter; escaped points get smooth value
+    __m256d result = _mm256_blendv_pd(smooth, max_d_v, active);
+    _mm256_storeu_pd(out4, result);
 }
 
 void avx2_multibrot_4(double re0, double scale, double im,
