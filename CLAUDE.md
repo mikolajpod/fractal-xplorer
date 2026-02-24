@@ -43,9 +43,9 @@ bash package.sh   # → fractal_xplorer-1.0-win64.zip
 ```
 User input
   → ViewState (center_x/y, view_width, max_iter, formula, julia_mode, julia_re/im,
-               palette, pal_offset, multibrot_exp, multibrot_exp_f)
+               palette, pal_offset, multibrot_exp, multibrot_exp_f, color_mode)
   → CpuRenderer::render(vs, PixelBuffer)          [tile pool + AVX2 or scalar kernel]
-  → palette_color(smooth, max_iter, palette, pal_offset)  [1024-entry LUT lookup]
+  → palette_color() or lyapunov_color()            [1024-entry LUT lookup]
   → PixelBuffer (uint32_t RGBA pixels)
   → glTexSubImage2D → GLuint texture
   → ImGui::Image()                                [displayed in ##render window]
@@ -82,14 +82,14 @@ Do not change this layout without updating all three output paths.
 
 | File | Role |
 |---|---|
-| `view_state.hpp` | `FormulaType` enum + `ViewState` struct + `zoom_display()` + `fractal_name()` + `reset_view_keep_params()` |
+| `view_state.hpp` | `FormulaType` enum + `ColorMode` enum + `ViewState` struct + `zoom_display()` + `fractal_name()` + `reset_view_keep_params()` |
 | `renderer.hpp` | `IFractalRenderer` interface, `PixelBuffer` |
 | `fractal.hpp` | Scalar iteration kernels (Mandelbrot, Julia, Burning Ship, Mandelbar, Multibrot, Multijulia, Celtic, Buffalo) |
 | `fractal_avx.hpp` | Declarations for AVX2 entry points |
 | `cpu_renderer_avx.cpp` | AVX2+FMA+SLEEF kernels — compiled with `-O2 -mavx2 -mfma` |
 | `cpu_renderer.hpp/.cpp` | Thread pool tile dispatch, AVX2 runtime detection, `set_thread_count()` |
 | `thread_pool.hpp` | `std::thread` pool with condition-variable task queue |
-| `palette.hpp` | LUT declaration, `palette_color()` inline, constants |
+| `palette.hpp` | LUT declaration, `palette_color()` + `lyapunov_color()` inlines, constants |
 | `palette.cpp` | `init_palettes()` — 8 palettes built from color stops at startup |
 | `export.hpp/.cpp` | `export_png()`, `export_jxl()` (guarded by `HAVE_JXL`) |
 | `app_state.hpp` | `GlTex` GL texture helper + `AppState` struct (all mutable application state) |
@@ -127,16 +127,26 @@ extracting to scalar, computing 4 logs, and reinserting. This applies to all thr
 kernel templates.
 
 **AVX2 kernel structure** — `cpu_renderer_avx.cpp` contains three templates:
-- `avx2_kernel<IsJulia, IsBurningShip, IsMandelbar, AbsRe, AbsIm>` — for degree-2
-  formulas; 12 public wrappers cover all (formula × julia_mode) combinations;
-  uses FMA squaring for Standard/Mandelbar/BurningShip; Celtic uses `AbsRe=true`,
-  Buffalo uses `AbsRe=true, AbsIm=true` (abs applied to components of z² after squaring)
-- `avx2_multibrot_kernel<IsJulia, IsMandelbar>` — for integer exponent ≥ 2; uses
-  repeated complex multiplication (no trig), smooth coloring with `log(exp_n)`;
-  covers MultiFast and Mandelbar with n≥3, both in Mandelbrot and Julia mode
-- `avx2_multibrot_slow_kernel<IsJulia>` — for real exponent (MultiSlow); uses
-  polar-form z^n via SLEEF vectorized log, exp, atan2, sincos; 2 public wrappers
-  (`avx2_multibrot_slow_4` / `avx2_multijulia_slow_4`)
+- `avx2_kernel<IsJulia, IsBurningShip, IsMandelbar, AbsRe, AbsIm, ComputeLyapunov>`
+  — for degree-2 formulas; 12 public wrappers cover all (formula × julia_mode)
+  combinations; uses FMA squaring for Standard/Mandelbar/BurningShip; Celtic uses
+  `AbsRe=true`, Buffalo uses `AbsRe=true, AbsIm=true`
+- `avx2_multibrot_kernel<IsJulia, IsMandelbar, ComputeLyapunov>` — for integer
+  exponent ≥ 2; uses repeated complex multiplication (no trig), smooth coloring
+  with `log(exp_n)`; covers MultiFast and Mandelbar with n≥3
+- `avx2_multibrot_slow_kernel<IsJulia, ComputeLyapunov>` — for real exponent
+  (MultiSlow); uses polar-form z^n via SLEEF vectorized log, exp, atan2, sincos
+
+All three templates have a `ComputeLyapunov` bool (default `false`). When `true`,
+they accumulate `log|f'(z)| = log(n) + (n-1)/2 * log(|z|²)` per iteration using
+SLEEF log, and output `lambda = sum/count` alongside the smooth value. Existing
+public wrappers are unchanged (`ComputeLyapunov=false`); Lyapunov instantiations
+are called only through `avx2_lyapunov_4()`.
+
+`avx2_lyapunov_4(formula, julia_mode, ...)` is a single dispatch function that
+covers all 14 formula × julia_mode combinations, routing to `<..., true>`
+template instantiations. It replicates the `slow_int_n` integer promotion logic
+for MultiSlow.
 
 `n=2` for Standard dispatches to `avx2_mandelbrot_4` / `avx2_julia_4`;
 `n≥3` (integer) dispatches to `avx2_multibrot_4` / `avx2_multijulia_4`;
@@ -157,7 +167,7 @@ the fixed *c* parameter used when `julia_mode=true`.
 
 **Reset preserves user params** — `R` / View→Reset resets navigation
 (center, zoom) to the universal default; formula, julia_mode, Julia params, palette,
-pal_offset, and multibrot exponents survive.
+pal_offset, multibrot exponents, and color_mode survive.
 
 ---
 
@@ -185,9 +195,39 @@ When `multibrot_exp_f` is an exact integer (e.g. 3.0), `render_tile()` detects t
 
 ---
 
+## ColorMode Enum
+
+```cpp
+enum ColorMode {
+    COLOR_SMOOTH            = 0,  // escape-time smooth coloring (default)
+    COLOR_LYAPUNOV_INTERIOR = 1,  // interior by λ, exterior by escape-time
+    COLOR_LYAPUNOV_FULL     = 2,  // all pixels by λ
+};
+constexpr int COLOR_MODE_COUNT = 3;
+```
+
+`ViewState::color_mode` (int, default 0) selects the coloring mode.
+
+**Lyapunov exponent** λ = (1/N) Σ log|f'(z_k)|, where log|f'(z)| = log(n) +
+(n-1)/2 · log(|z|²). Mapped to palette via `lyapunov_color()` in `palette.hpp`
+with `LYAP_SCALE = 200.0` (one palette cycle per λ range of ~5.1).
+
+In `render_tile()`, `COLOR_SMOOTH` takes the fast path (existing per-formula
+dispatch); Lyapunov modes call `avx2_lyapunov_4()` which returns both smooth
+and lambda arrays. `COLOR_LYAPUNOV_INTERIOR` uses lambda only for interior
+points (smooth ≥ max_iter), exterior keeps escape-time coloring.
+`COLOR_LYAPUNOV_FULL` colors everything by lambda.
+
+The scalar remainder (0–3 pixels per row) always uses escape-time coloring
+regardless of color_mode — visually imperceptible.
+
+Mini-map always uses `COLOR_SMOOTH` (ViewState{} defaults `color_mode=0`).
+
+---
+
 ## How to Add a New Fixed-Formula Fractal (degree 2)
 
-6 places, 4 files — follow the Burning Ship + Julia pattern:
+7 places, 4 files — follow the Burning Ship + Julia pattern:
 
 1. `view_state.hpp` — add enum value to `FormulaType`, update `fractal_name()`, bump `FORMULA_COUNT`
 2. `fractal.hpp` — add scalar `foo_iter(re, im, max_iter)` and
@@ -202,7 +242,9 @@ When `multibrot_exp_f` is an exact integer (e.g. 3.0), `render_tile()` detects t
      `avx2_foo_julia_4()` → `avx2_kernel<true, ..., true>(...)`
 5. `cpu_renderer.cpp` — add `case FormulaType::Foo:` to both the AVX2 switch and
    the scalar switch inside `render_tile()`, dispatch on `vs.julia_mode`
-6. `main.cpp` — add the name string to the `names[]` array in the formula Combo
+6. `cpu_renderer_avx.cpp` — add `case FormulaType::Foo:` to `avx2_lyapunov_4()`
+   dispatch, calling the `<..., true>` Lyapunov template instantiation
+7. `main.cpp` — add the name string to the `names[]` array in the formula Combo
 
 ---
 
