@@ -218,8 +218,9 @@ and lambda arrays. `COLOR_LYAPUNOV_INTERIOR` uses lambda only for interior
 points (smooth ≥ max_iter), exterior keeps escape-time coloring.
 `COLOR_LYAPUNOV_FULL` colors everything by lambda.
 
-The scalar remainder (0–3 pixels per row) always uses escape-time coloring
-regardless of color_mode — visually imperceptible.
+The scalar path (remainder pixels and full rows on non-AVX2 CPUs) uses
+`scalar_lyapunov_iter()` in `fractal.hpp` for Lyapunov modes — a single
+generic function covering all formulas that returns `{smooth, lambda}`.
 
 Mini-map always uses `COLOR_SMOOTH` (ViewState{} defaults `color_mode=0`).
 
@@ -285,6 +286,13 @@ compare against `benchmark_baseline.txt`:
 
 ```bash
 ./build/fractal_xplorer.exe --benchmark
+```
+
+Pass `--no-avx2` to force the scalar path at runtime (useful for testing on
+AVX2-capable machines without needing old hardware):
+
+```bash
+./build/fractal_xplorer.exe --no-avx2
 ```
 
 Single-threaded, 1920×1080, 256 iter, 9 test cases covering all AVX2 kernel

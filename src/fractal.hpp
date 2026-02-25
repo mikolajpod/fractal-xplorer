@@ -368,6 +368,137 @@ inline double mandelbar_multi_julia_iter(double re, double im, double cr, double
     return static_cast<double>(max_iter);
 }
 
+// Generic scalar Lyapunov iteration: returns {smooth, lambda} for any formula.
+// lambda = (1/N) * sum(log|f'(z_k)|), where log|f'(z)| = log(n) + (n-1)/2 * log(|z|^2).
+struct SmoothLyapunov { double smooth; double lambda; };
+
+inline SmoothLyapunov scalar_lyapunov_iter(double re, double im, const ViewState& vs)
+{
+    double zr, zi, cr, ci;
+    if (vs.julia_mode) {
+        zr = re; zi = im;
+        cr = vs.julia_re; ci = vs.julia_im;
+    } else {
+        zr = 0.0; zi = 0.0;
+        cr = re; ci = im;
+    }
+
+    // Determine exponent for smooth coloring and Lyapunov derivative
+    const double exp_n = [&]() -> double {
+        switch (vs.formula) {
+            case FormulaType::Mandelbar:
+            case FormulaType::MultiFast:
+                return static_cast<double>(vs.multibrot_exp);
+            case FormulaType::MultiSlow:
+                return vs.multibrot_exp_f;
+            default:  // Standard, BurningShip, Celtic, Buffalo
+                return 2.0;
+        }
+    }();
+    const double log_n     = std::log(exp_n);
+    const double half_nm1  = (exp_n - 1.0) * 0.5;
+
+    double lyap_sum = 0.0;
+    int    count    = 0;
+
+    for (int i = 0; i < vs.max_iter; ++i) {
+        const double mag2 = zr * zr + zi * zi;
+
+        // Accumulate Lyapunov: log|f'(z)| = log(n) + (n-1)/2 * log(|z|^2)
+        if (mag2 > 0.0) {
+            lyap_sum += log_n + half_nm1 * std::log(mag2);
+            ++count;
+        }
+
+        if (mag2 > 4.0) {
+            // Smooth escape-time
+            const double log_zn = std::log(mag2) * 0.5;
+            const double nu     = std::log(log_zn / log_n) / log_n;
+            const double smooth = std::max(0.0, static_cast<double>(i) + 1.0 - nu);
+            const double lambda = (count > 0) ? lyap_sum / count : 0.0;
+            return {smooth, lambda};
+        }
+
+        // z-update per formula
+        double new_zr, new_zi;
+        switch (vs.formula) {
+            case FormulaType::Standard:
+                new_zr = zr*zr - zi*zi + cr;
+                new_zi = 2.0*zr*zi + ci;
+                break;
+            case FormulaType::BurningShip: {
+                const double azr = std::abs(zr), azi = std::abs(zi);
+                new_zr = azr*azr - azi*azi + cr;
+                new_zi = 2.0*azr*azi + ci;
+                break;
+            }
+            case FormulaType::Celtic: {
+                const double zr2 = zr*zr, zi2 = zi*zi;
+                new_zr = std::abs(zr2 - zi2) + cr;
+                new_zi = 2.0*zr*zi + ci;
+                break;
+            }
+            case FormulaType::Buffalo: {
+                const double zr2 = zr*zr, zi2 = zi*zi;
+                new_zr = std::abs(zr2 - zi2) + cr;
+                new_zi = std::abs(2.0*zr*zi) + ci;
+                break;
+            }
+            case FormulaType::Mandelbar: {
+                const int n = vs.multibrot_exp;
+                if (n == 2) {
+                    new_zr =  zr*zr - zi*zi + cr;
+                    new_zi = -2.0*zr*zi + ci;
+                } else {
+                    double pr = zr, pi = zi;
+                    for (int k = 1; k < n; ++k) {
+                        const double np = pr*zr - pi*zi;
+                        pi = pr*zi + pi*zr;
+                        pr = np;
+                    }
+                    new_zr =  pr + cr;
+                    new_zi = -pi + ci;
+                }
+                break;
+            }
+            case FormulaType::MultiFast: {
+                const int n = vs.multibrot_exp;
+                double pr = zr, pi = zi;
+                for (int k = 1; k < n; ++k) {
+                    const double np = pr*zr - pi*zi;
+                    pi = pr*zi + pi*zr;
+                    pr = np;
+                }
+                new_zr = pr + cr;
+                new_zi = pi + ci;
+                break;
+            }
+            case FormulaType::MultiSlow: {
+                if (mag2 == 0.0) {
+                    new_zr = cr;
+                    new_zi = ci;
+                } else {
+                    const double r_n   = std::exp(exp_n * std::log(mag2) * 0.5);
+                    const double theta = std::atan2(zi, zr);
+                    new_zr = r_n * std::cos(exp_n * theta) + cr;
+                    new_zi = r_n * std::sin(exp_n * theta) + ci;
+                }
+                break;
+            }
+            default:
+                new_zr = cr;
+                new_zi = ci;
+                break;
+        }
+        zr = new_zr;
+        zi = new_zi;
+    }
+
+    // Interior point
+    const double lambda = (count > 0) ? lyap_sum / count : 0.0;
+    return {static_cast<double>(vs.max_iter), lambda};
+}
+
 // Returns up to max_n intermediate z values (stops early on escape).
 // Works for any formula via the ViewState formula + julia_mode fields.
 // Interior points (never escaping) still return all max_n+1 points.

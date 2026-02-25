@@ -183,6 +183,19 @@ void CpuRenderer::render_tile(const ViewState& vs, PixelBuffer& buf,
         // Scalar path: remainder pixels (or full row if no AVX2)
         for (; px < end; ++px) {
             const double re = x0 + px * scale;
+
+            if (vs.color_mode != COLOR_SMOOTH) {
+                // Lyapunov mode: compute both smooth and lambda
+                auto [smooth, lambda] = scalar_lyapunov_iter(re, im, vs);
+                if (vs.color_mode == COLOR_LYAPUNOV_FULL)
+                    row[px] = lyapunov_color(lambda, vs.palette, vs.pal_offset);
+                else  // COLOR_LYAPUNOV_INTERIOR
+                    row[px] = (smooth >= static_cast<double>(vs.max_iter))
+                        ? lyapunov_color(lambda, vs.palette, vs.pal_offset)
+                        : palette_color(smooth, vs.max_iter, vs.palette, vs.pal_offset);
+                continue;
+            }
+
             double smooth;
             switch (vs.formula) {
                 case FormulaType::Standard:

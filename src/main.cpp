@@ -28,6 +28,15 @@ int main(int argc, char* argv[])
         return 0;
     }
 
+    // Check for --no-avx2 flag anywhere in argv
+    bool force_no_avx2 = false;
+    for (int i = 1; i < argc; ++i) {
+        if (std::string(argv[i]) == "--no-avx2") {
+            force_no_avx2 = true;
+            break;
+        }
+    }
+
     if (SDL_Init(SDL_INIT_VIDEO) != 0) {
         std::fprintf(stderr, "SDL_Init failed: %s\n", SDL_GetError());
         return 1;
@@ -60,6 +69,8 @@ int main(int argc, char* argv[])
     // App state
     // -----------------------------------------------------------------------
     AppState app;
+    if (force_no_avx2)
+        app.renderer.set_avx2(false);
 
     auto update_title = [&]() {
         char tbuf[128];
