@@ -413,20 +413,20 @@ void draw_benchmark_dialog(AppState& app)
         // Per-run state (static -- persists across frames while modal is open)
         static bool   bench_running  = false;
         static bool   bench_done     = false;
-        static int    bench_phase    = 0;   // 0=AVX2, 1=scalar
+        static int    bench_phase    = 0;   // 0=AVX, 1=scalar
         static int    bench_ti       = 0;   // thread index 0-based
         static int    bench_rep      = 0;   // repetition 0-3
         static double bench_sum      = 0.0;
         static int    bench_saved_tc = 0;   // saved thread count
-        static bool   bench_saved_a2 = false;
-        static std::vector<float> bench_avx2;
+        static bool   bench_saved_a = false;
+        static std::vector<float> bench_avx;
         static std::vector<float> bench_scalar;
         static PixelBuffer bench_buf;
 
         // One render step per frame while running
         if (bench_running) {
             app.renderer.set_thread_count(bench_ti + 1);
-            app.renderer.set_avx2(bench_phase == 0);
+            app.renderer.set_avx(bench_phase == 0);
 
             ViewState bvs;   // Mandelbrot, center (-0.5,0), width 3.5, 256 iter
             bvs.center_x   = -0.5;
@@ -440,7 +440,7 @@ void draw_benchmark_dialog(AppState& app)
                 const double avg_ms = bench_sum / 4.0;
                 const float  mpixs  = static_cast<float>(
                     1920.0 * 1080.0 / (avg_ms * 1000.0));
-                if (bench_phase == 0) bench_avx2[bench_ti]   = mpixs;
+                if (bench_phase == 0) bench_avx[bench_ti]   = mpixs;
                 else                  bench_scalar[bench_ti]  = mpixs;
                 bench_sum = 0.0;
                 bench_rep = 0;
@@ -453,7 +453,7 @@ void draw_benchmark_dialog(AppState& app)
                         bench_running = false;
                         bench_done    = true;
                         app.renderer.set_thread_count(bench_saved_tc);
-                        app.renderer.set_avx2(bench_saved_a2);
+                        app.renderer.set_avx(bench_saved_a);
                         app.dirty = true;  // restore main view
                     }
                 }
@@ -463,7 +463,7 @@ void draw_benchmark_dialog(AppState& app)
         // Run button
         if (!bench_running) {
             if (ImGui::Button(bench_done ? "Run again" : "Run")) {
-                bench_avx2.assign(hw, 0.0f);
+                bench_avx.assign(hw, 0.0f);
                 bench_scalar.assign(hw, 0.0f);
                 bench_phase   = 0;
                 bench_ti      = 0;
@@ -471,7 +471,7 @@ void draw_benchmark_dialog(AppState& app)
                 bench_sum     = 0.0;
                 bench_done    = false;
                 bench_saved_tc = app.renderer.thread_count;
-                bench_saved_a2 = app.renderer.avx2_active;
+                bench_saved_a = app.renderer.avx_active;
                 bench_running  = true;
             }
         } else {
@@ -488,7 +488,7 @@ void draw_benchmark_dialog(AppState& app)
             char prog[64];
             if (bench_running)
                 snprintf(prog, sizeof(prog), "%s  %d/%d threads  rep %d/4",
-                         bench_phase == 0 ? "AVX2" : "Scalar",
+                         bench_phase == 0 ? "AVX" : "Scalar",
                          bench_ti + 1, hw, bench_rep + 1);
             else
                 snprintf(prog, sizeof(prog), "Done");
@@ -497,7 +497,7 @@ void draw_benchmark_dialog(AppState& app)
                                ImVec2(-1.0f, 0.0f));
         }
 
-        // Chart -- overlay AVX2 (blue) and Scalar (orange) on same area
+        // Chart -- overlay AVX (blue) and Scalar (orange) on same area
         if ((bench_running && (bench_phase > 0 || bench_ti > 0)) || bench_done) {
             ImGui::Spacing();
             ImGui::Separator();
@@ -509,21 +509,21 @@ void draw_benchmark_dialog(AppState& app)
             // Compute common Y scale from whichever data is ready
             float y_max = 1.0f;
             for (int i = 0; i < hw; ++i) {
-                if (bench_avx2[i]   > y_max) y_max = bench_avx2[i];
+                if (bench_avx[i]   > y_max) y_max = bench_avx[i];
                 if (bench_scalar[i] > y_max) y_max = bench_scalar[i];
             }
             y_max *= 1.1f;  // 10% headroom
 
-            // AVX2 chart
-            char avx2_lbl[48], scalar_lbl[48];
-            snprintf(avx2_lbl,   sizeof(avx2_lbl),
-                     "AVX2  (Mpix/s, 1..%d threads)", hw);
+            // AVX chart
+            char avx_lbl[48], scalar_lbl[48];
+            snprintf(avx_lbl,    sizeof(avx_lbl),
+                     "AVX  (Mpix/s, 1..%d threads)", hw);
             snprintf(scalar_lbl, sizeof(scalar_lbl),
                      "Scalar(Mpix/s, 1..%d threads)", hw);
 
             ImGui::PushStyleColor(ImGuiCol_PlotHistogram, ImVec4(0.3f, 0.7f, 1.0f, 1.0f));
-            ImGui::PlotHistogram("##avx2", bench_avx2.data(), hw, 0,
-                                 avx2_lbl, 0.0f, y_max, plot_sz);
+            ImGui::PlotHistogram("##avx", bench_avx.data(), hw, 0,
+                                 avx_lbl, 0.0f, y_max, plot_sz);
             ImGui::PopStyleColor();
 
             // Scalar chart -- same Y scale so they are visually comparable
@@ -544,7 +544,7 @@ void draw_benchmark_dialog(AppState& app)
             if (bench_running) {
                 bench_running = false;
                 app.renderer.set_thread_count(bench_saved_tc);
-                app.renderer.set_avx2(bench_saved_a2);
+                app.renderer.set_avx(bench_saved_a);
                 app.dirty = true;
             }
             ImGui::CloseCurrentPopup();
@@ -570,7 +570,7 @@ void draw_about_dialog(AppState& app)
         ImGui::Text("A fast, no-nonsense fractal explorer.");
         ImGui::Text("z^2  |  Burning Ship  |  Mandelbar  |  z^n  |  Julia mode for all");
         ImGui::Spacing();
-        ImGui::TextDisabled("AVX2 + multithreaded tile rendering");
+        ImGui::TextDisabled("AVX + multithreaded tile rendering");
         ImGui::TextDisabled("8 color palettes with offset cycling");
         ImGui::TextDisabled("PNG and JPEG XL lossless export up to 8K");
         ImGui::Spacing();

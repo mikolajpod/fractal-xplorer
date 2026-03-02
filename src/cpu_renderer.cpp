@@ -1,6 +1,6 @@
 #include "cpu_renderer.hpp"
 #include "fractal.hpp"
-#include "fractal_avx.hpp"
+#include "cpu_renderer_avx.hpp"
 #include "palette.hpp"
 
 #include <algorithm>
@@ -8,12 +8,12 @@
 #include <thread>
 
 // -----------------------------------------------------------------------
-// Constructor — detect AVX2, build thread pool
+// Constructor — detect AVX, build thread pool
 // -----------------------------------------------------------------------
 CpuRenderer::CpuRenderer()
 {
-    use_avx2   = __builtin_cpu_supports("avx2");
-    avx2_active = use_avx2;
+    use_avx    = __builtin_cpu_supports("avx");
+    avx_active = use_avx;
 
     int n = static_cast<int>(std::thread::hardware_concurrency());
     if (n < 1) n = 4;
@@ -42,7 +42,7 @@ void CpuRenderer::render_tile(const ViewState& vs, PixelBuffer& buf,
     const double y0    = vs.center_y - H * 0.5 * scale;
 
     // For MultiSlow: if float exponent is effectively an integer, promote to
-    // the fast integer path (AVX2 repeated-multiply, no trig).
+    // the fast integer path (AVX repeated-multiply, no trig).
     const int slow_int_n = [&]() -> int {
         if (vs.formula != FormulaType::MultiSlow)
             return 0;
@@ -56,10 +56,10 @@ void CpuRenderer::render_tile(const ViewState& vs, PixelBuffer& buf,
         int          px  = tx;
         const int    end = std::min(tx + tw, W);
 
-        // AVX2 path: 4 pixels per iteration.
-        const bool use_avx2_here = use_avx2;
+        // AVX path: 4 pixels per iteration.
+        const bool use_avx_here = use_avx;
 
-        if (use_avx2_here) {
+        if (use_avx_here) {
             for (; px + 4 <= end; px += 4) {
                 const double re0 = x0 + px * scale;
 
@@ -68,49 +68,49 @@ void CpuRenderer::render_tile(const ViewState& vs, PixelBuffer& buf,
                     switch (vs.formula) {
                         case FormulaType::Standard:
                             if (vs.julia_mode)
-                                avx2_julia_4(re0, scale, im, vs.max_iter,
+                                avx_julia_4(re0, scale, im, vs.max_iter,
                                              vs.julia_re, vs.julia_im, smooth4);
                             else
-                                avx2_mandelbrot_4(re0, scale, im, vs.max_iter, smooth4);
+                                avx_mandelbrot_4(re0, scale, im, vs.max_iter, smooth4);
                             break;
                         case FormulaType::BurningShip:
                             if (vs.julia_mode)
-                                avx2_burning_ship_julia_4(re0, scale, im, vs.max_iter,
+                                avx_burning_ship_julia_4(re0, scale, im, vs.max_iter,
                                                           vs.julia_re, vs.julia_im, smooth4);
                             else
-                                avx2_burning_ship_4(re0, scale, im, vs.max_iter, smooth4);
+                                avx_burning_ship_4(re0, scale, im, vs.max_iter, smooth4);
                             break;
                         case FormulaType::Mandelbar:
                             if (vs.julia_mode) {
                                 if (vs.multibrot_exp == 2)
-                                    avx2_mandelbar_julia_4(re0, scale, im, vs.max_iter,
+                                    avx_mandelbar_julia_4(re0, scale, im, vs.max_iter,
                                                            vs.julia_re, vs.julia_im, smooth4);
                                 else
-                                    avx2_mandelbar_multi_julia_4(re0, scale, im, vs.max_iter,
+                                    avx_mandelbar_multi_julia_4(re0, scale, im, vs.max_iter,
                                                                   vs.multibrot_exp,
                                                                   vs.julia_re, vs.julia_im, smooth4);
                             } else {
                                 if (vs.multibrot_exp == 2)
-                                    avx2_mandelbar_4(re0, scale, im, vs.max_iter, smooth4);
+                                    avx_mandelbar_4(re0, scale, im, vs.max_iter, smooth4);
                                 else
-                                    avx2_mandelbar_multi_4(re0, scale, im, vs.max_iter,
+                                    avx_mandelbar_multi_4(re0, scale, im, vs.max_iter,
                                                            vs.multibrot_exp, smooth4);
                             }
                             break;
                         case FormulaType::MultiFast:
                             if (vs.julia_mode) {
                                 if (vs.multibrot_exp == 2)
-                                    avx2_julia_4(re0, scale, im, vs.max_iter,
+                                    avx_julia_4(re0, scale, im, vs.max_iter,
                                                  vs.julia_re, vs.julia_im, smooth4);
                                 else
-                                    avx2_multijulia_4(re0, scale, im, vs.max_iter,
+                                    avx_multijulia_4(re0, scale, im, vs.max_iter,
                                                       vs.multibrot_exp,
                                                       vs.julia_re, vs.julia_im, smooth4);
                             } else {
                                 if (vs.multibrot_exp == 2)
-                                    avx2_mandelbrot_4(re0, scale, im, vs.max_iter, smooth4);
+                                    avx_mandelbrot_4(re0, scale, im, vs.max_iter, smooth4);
                                 else
-                                    avx2_multibrot_4(re0, scale, im, vs.max_iter,
+                                    avx_multibrot_4(re0, scale, im, vs.max_iter,
                                                      vs.multibrot_exp, smooth4);
                             }
                             break;
@@ -118,45 +118,45 @@ void CpuRenderer::render_tile(const ViewState& vs, PixelBuffer& buf,
                             if (slow_int_n > 0) {
                                 if (vs.julia_mode) {
                                     if (slow_int_n == 2)
-                                        avx2_julia_4(re0, scale, im, vs.max_iter,
+                                        avx_julia_4(re0, scale, im, vs.max_iter,
                                                      vs.julia_re, vs.julia_im, smooth4);
                                     else
-                                        avx2_multijulia_4(re0, scale, im, vs.max_iter,
+                                        avx_multijulia_4(re0, scale, im, vs.max_iter,
                                                           slow_int_n,
                                                           vs.julia_re, vs.julia_im, smooth4);
                                 } else {
                                     if (slow_int_n == 2)
-                                        avx2_mandelbrot_4(re0, scale, im, vs.max_iter, smooth4);
+                                        avx_mandelbrot_4(re0, scale, im, vs.max_iter, smooth4);
                                     else
-                                        avx2_multibrot_4(re0, scale, im, vs.max_iter,
+                                        avx_multibrot_4(re0, scale, im, vs.max_iter,
                                                          slow_int_n, smooth4);
                                 }
                             } else {
                                 if (vs.julia_mode)
-                                    avx2_multijulia_slow_4(re0, scale, im, vs.max_iter,
+                                    avx_multijulia_slow_4(re0, scale, im, vs.max_iter,
                                                             vs.multibrot_exp_f,
                                                             vs.julia_re, vs.julia_im, smooth4);
                                 else
-                                    avx2_multibrot_slow_4(re0, scale, im, vs.max_iter,
+                                    avx_multibrot_slow_4(re0, scale, im, vs.max_iter,
                                                            vs.multibrot_exp_f, smooth4);
                             }
                             break;
                         case FormulaType::Celtic:
                             if (vs.julia_mode)
-                                avx2_celtic_julia_4(re0, scale, im, vs.max_iter,
+                                avx_celtic_julia_4(re0, scale, im, vs.max_iter,
                                                     vs.julia_re, vs.julia_im, smooth4);
                             else
-                                avx2_celtic_4(re0, scale, im, vs.max_iter, smooth4);
+                                avx_celtic_4(re0, scale, im, vs.max_iter, smooth4);
                             break;
                         case FormulaType::Buffalo:
                             if (vs.julia_mode)
-                                avx2_buffalo_julia_4(re0, scale, im, vs.max_iter,
+                                avx_buffalo_julia_4(re0, scale, im, vs.max_iter,
                                                      vs.julia_re, vs.julia_im, smooth4);
                             else
-                                avx2_buffalo_4(re0, scale, im, vs.max_iter, smooth4);
+                                avx_buffalo_4(re0, scale, im, vs.max_iter, smooth4);
                             break;
                         default:
-                            avx2_mandelbrot_4(re0, scale, im, vs.max_iter, smooth4);
+                            avx_mandelbrot_4(re0, scale, im, vs.max_iter, smooth4);
                             break;
                     }
                     for (int k = 0; k < 4; ++k)
@@ -165,7 +165,7 @@ void CpuRenderer::render_tile(const ViewState& vs, PixelBuffer& buf,
                 } else {
                     // Lyapunov mode: compute both smooth and lambda
                     double smooth4[4], lyap4[4];
-                    avx2_lyapunov_4(vs.formula, vs.julia_mode, re0, scale, im,
+                    avx_lyapunov_4(vs.formula, vs.julia_mode, re0, scale, im,
                                      vs.max_iter, vs.multibrot_exp, vs.multibrot_exp_f,
                                      vs.julia_re, vs.julia_im, smooth4, lyap4);
                     for (int k = 0; k < 4; ++k) {
@@ -180,7 +180,7 @@ void CpuRenderer::render_tile(const ViewState& vs, PixelBuffer& buf,
             }
         }
 
-        // Scalar path: remainder pixels (or full row if no AVX2)
+        // Scalar path: remainder pixels (or full row if no AVX)
         for (; px < end; ++px) {
             const double re = x0 + px * scale;
 
@@ -273,7 +273,7 @@ void CpuRenderer::render_tile(const ViewState& vs, PixelBuffer& buf,
 // -----------------------------------------------------------------------
 void CpuRenderer::render(const ViewState& vs, PixelBuffer& buf)
 {
-    avx2_active = use_avx2;
+    avx_active = use_avx;
 
     using clock = std::chrono::steady_clock;
     const auto t0 = clock::now();

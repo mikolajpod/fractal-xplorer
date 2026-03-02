@@ -27,7 +27,7 @@ inline int run_cli_benchmark()
     };
 
     const TestCase tests[] = {
-        // AVX2 path
+        // AVX path
         {"Mandelbrot",              FormulaType::Standard,    false, 2, 2.0, false},
         {"Julia",                   FormulaType::Standard,    true,  2, 2.0, false},
         {"Burning Ship",            FormulaType::BurningShip, false, 2, 2.0, false},
@@ -49,11 +49,11 @@ inline int run_cli_benchmark()
 
     printf("Fractal Xplorer CLI Benchmark\n");
     printf("%dx%d, 256 iter, 1 thread, %d runs (avg best %d)\n", W, H, RUNS, BEST_N);
-    printf("AVX2 supported: %s\n\n", renderer.avx2_active ? "yes" : "no");
+    printf("AVX supported: %s\n\n", renderer.avx_active ? "yes" : "no");
     printf("%-30s %-10s %s\n", "Label", "Path", "Mpix/s");
     printf("------------------------------------------------\n");
 
-    const bool has_avx2 = renderer.avx2_active;
+    const bool has_avx = renderer.avx_active;
 
     for (const auto& t : tests) {
         ViewState vs;
@@ -69,9 +69,9 @@ inline int run_cli_benchmark()
         vs.multibrot_exp_f =  t.exp_f;
 
         if (t.force_scalar)
-            renderer.set_avx2(false);
+            renderer.set_avx(false);
         else
-            renderer.set_avx2(has_avx2);
+            renderer.set_avx(has_avx);
 
         // Warm-up
         renderer.render(vs, buf);
@@ -88,12 +88,12 @@ inline int run_cli_benchmark()
         double mpixs = (W * H) / (avg_ms * 1000.0);
 
         const char* path_label = "scalar";
-        if (!t.force_scalar && has_avx2)
-            path_label = "AVX2";
+        if (!t.force_scalar && has_avx)
+            path_label = "AVX";
 
         printf("%-30s %-10s %6.2f\n", t.label, path_label, mpixs);
     }
 
-    renderer.set_avx2(has_avx2);  // restore
+    renderer.set_avx(has_avx);  // restore
     return 0;
 }

@@ -72,9 +72,9 @@ endif()
 # General optimisation for all sources
 target_compile_options(fractal_xplorer PRIVATE -O2)
 
-# AVX2 + FMA only for the file that actually uses intrinsics
+# AVX only for the file that actually uses intrinsics
 set_source_files_properties(src/cpu_renderer_avx.cpp PROPERTIES
-    COMPILE_OPTIONS "-O2;-mavx2;-mfma"
+    COMPILE_OPTIONS "-O2;-mavx"
 )
 
 # Hide console window on Windows (SDL2main bridges WinMain -> main)

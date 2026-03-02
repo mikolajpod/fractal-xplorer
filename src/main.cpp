@@ -28,11 +28,11 @@ int main(int argc, char* argv[])
         return 0;
     }
 
-    // Check for --no-avx2 flag anywhere in argv
-    bool force_no_avx2 = false;
+    // Check for --no-avx flag anywhere in argv
+    bool force_no_avx = false;
     for (int i = 1; i < argc; ++i) {
-        if (std::string(argv[i]) == "--no-avx2") {
-            force_no_avx2 = true;
+        if (std::string(argv[i]) == "--no-avx") {
+            force_no_avx = true;
             break;
         }
     }
@@ -69,8 +69,8 @@ int main(int argc, char* argv[])
     // App state
     // -----------------------------------------------------------------------
     AppState app;
-    if (force_no_avx2)
-        app.renderer.set_avx2(false);
+    if (force_no_avx)
+        app.renderer.set_avx(false);
 
     auto update_title = [&]() {
         char tbuf[128];
@@ -365,7 +365,7 @@ int main(int argc, char* argv[])
         ImGui::Text("x: %.8f   y: %.8f   zoom: %.4fx   iter: %d   %.0f ms  [%s  %dt]",
                     app.vs.center_x, app.vs.center_y, zoom_display(app.vs), app.vs.max_iter,
                     app.main_render_ms,
-                    app.renderer.avx2_active ? "AVX2" : "scalar",
+                    app.renderer.avx_active ? "AVX" : "scalar",
                     app.renderer.thread_count);
         ImGui::End();
 

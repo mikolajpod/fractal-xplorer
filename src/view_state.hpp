@@ -6,7 +6,7 @@ enum class FormulaType {
     Celtic      = 2,  // |Re(z^2)| + i Im(z^2) + c
     Buffalo     = 3,  // |Re(z^2)| + i|Im(z^2)| + c
     Mandelbar   = 4,  // conj(z)^n + c  (integer exp 2-8)
-    MultiFast   = 5,  // z^n + c  (integer exp 2-8, AVX2)
+    MultiFast   = 5,  // z^n + c  (integer exp 2-8, AVX)
     MultiSlow   = 6,  // z^n + c  (real exp, scalar)
 };
 constexpr int FORMULA_COUNT = 7;

@@ -13,7 +13,7 @@ adds new fractal types and UX improvements.
 - **Build:** CMake + FetchContent (ImGui fetched automatically; no vcpkg/Conan)
 - **PNG export:** libpng (`pacman -S mingw-w64-x86_64-libpng`)
 - **JXL export:** libjxl 0.11.1 (`pacman -S mingw-w64-x86_64-libjxl`)
-- **SLEEF:** SLEEF 3.9.0 (`pacman -S mingw-w64-x86_64-sleef`) — vectorized math for AVX2 kernels
+- **SLEEF:** SLEEF 3.9.0 (`pacman -S mingw-w64-x86_64-sleef`) — vectorized math for AVX kernels
 
 ## Hard Rules
 
@@ -44,7 +44,7 @@ bash package.sh   # → fractal_xplorer-1.0-win64.zip
 User input
   → ViewState (center_x/y, view_width, max_iter, formula, julia_mode, julia_re/im,
                palette, pal_offset, multibrot_exp, multibrot_exp_f, color_mode)
-  → CpuRenderer::render(vs, PixelBuffer)          [tile pool + AVX2 or scalar kernel]
+  → CpuRenderer::render(vs, PixelBuffer)          [tile pool + AVX or scalar kernel]
   → palette_color() or lyapunov_color()            [1024-entry LUT lookup]
   → PixelBuffer (uint32_t RGBA pixels)
   → glTexSubImage2D → GLuint texture
@@ -85,9 +85,9 @@ Do not change this layout without updating all three output paths.
 | `view_state.hpp` | `FormulaType` enum + `ColorMode` enum + `ViewState` struct + `zoom_display()` + `fractal_name()` + `reset_view_keep_params()` |
 | `renderer.hpp` | `IFractalRenderer` interface, `PixelBuffer` |
 | `fractal.hpp` | Scalar iteration kernels — 3 templates (`scalar_kernel`, `scalar_multibrot_kernel`, `scalar_multibrot_slow_kernel`) + thin named wrappers; `scalar_lyapunov_iter`; `compute_orbit` |
-| `fractal_avx.hpp` | Declarations for AVX2 entry points |
-| `cpu_renderer_avx.cpp` | AVX2+FMA+SLEEF kernels — compiled with `-O2 -mavx2 -mfma` |
-| `cpu_renderer.hpp/.cpp` | Thread pool tile dispatch, AVX2 runtime detection, `set_thread_count()` |
+| `cpu_renderer_avx.hpp` | Declarations for AVX entry points |
+| `cpu_renderer_avx.cpp` | AVX+SLEEF kernels — compiled with `-O2 -mavx` |
+| `cpu_renderer.hpp/.cpp` | Thread pool tile dispatch, AVX runtime detection, `set_thread_count()` |
 | `thread_pool.hpp` | `std::thread` pool with condition-variable task queue |
 | `palette.hpp` | LUT declaration, `palette_color()` + `lyapunov_color()` inlines, constants |
 | `palette.cpp` | `init_palettes()` — 8 palettes built from color stops at startup |
@@ -101,9 +101,9 @@ Do not change this layout without updating all three output paths.
 
 ## Key Invariants
 
-**AVX2 separate translation unit** — `cpu_renderer_avx.cpp` is compiled with
-`-mavx2 -mfma` while everything else is not. This allows runtime detection via
-`__builtin_cpu_supports("avx2")` with a scalar fallback. Never `#include` AVX2
+**AVX separate translation unit** — `cpu_renderer_avx.cpp` is compiled with
+`-mavx` while everything else is not. This allows runtime detection via
+`__builtin_cpu_supports("avx")` with a scalar fallback. Never `#include` AVX
 intrinsic code from another file or move it into a header.
 
 **`ImTextureID` cast** — must go through `uintptr_t`, not `intptr_t`:
@@ -111,7 +111,7 @@ intrinsic code from another file or move it into a header.
 reinterpret_cast<ImTextureID>(static_cast<uintptr_t>(gl_id))  // correct
 ```
 
-**Smooth coloring formula** — scalar and AVX2 use:
+**Smooth coloring formula** — scalar and AVX use:
 ```
 smooth = iters + 1 - log(log(|z|) / log(n)) / log(n)
 ```
@@ -119,14 +119,14 @@ where `n` is the fractal exponent (2 for Standard/BurningShip/Mandelbar at n=2,
 or `multibrot_exp` / `multibrot_exp_f` for higher degrees). For n=2 this reduces
 to the classic `log2(log2(|z|))` formula. Interior points return `max_iter` exactly.
 
-The AVX2 path accumulates `iters_d` by adding 1.0 per active lane per iteration
+The AVX path accumulates `iters_d` by adding 1.0 per active lane per iteration
 (not `set1_pd(i+1)`), so `iters_d == i` at escape, matching the scalar formula.
 
-**AVX2 smooth coloring** uses SLEEF `Sleef_logd4_u35` (vectorized log) instead of
+**AVX smooth coloring** uses SLEEF `Sleef_logd4_u35` (vectorized log) instead of
 extracting to scalar, computing 4 logs, and reinserting. This applies to all three
 kernel templates.
 
-**Scalar kernel structure** — `fractal.hpp` mirrors the AVX2 structure with three templates:
+**Scalar kernel structure** — `fractal.hpp` mirrors the AVX structure with three templates:
 - `scalar_kernel<IsJulia, IsBurningShip, IsMandelbar, AbsRe, AbsIm>` — degree-2 formulas
 - `scalar_multibrot_kernel<IsJulia, IsMandelbar>` — integer exponent ≥ 2
 - `scalar_multibrot_slow_kernel<IsJulia>` — real exponent (polar form)
@@ -134,31 +134,31 @@ kernel templates.
 All 16 named `*_iter()` functions are one-liner wrappers around these templates.
 `scalar_lyapunov_iter()` and `compute_orbit()` remain independent (use their own switch).
 
-**AVX2 kernel structure** — `cpu_renderer_avx.cpp` contains three templates:
-- `avx2_kernel<IsJulia, IsBurningShip, IsMandelbar, AbsRe, AbsIm, ComputeLyapunov>`
+**AVX kernel structure** — `cpu_renderer_avx.cpp` contains three templates:
+- `avx_kernel<IsJulia, IsBurningShip, IsMandelbar, AbsRe, AbsIm, ComputeLyapunov>`
   — for degree-2 formulas; 12 public wrappers cover all (formula × julia_mode)
   combinations; uses FMA squaring for Standard/Mandelbar/BurningShip; Celtic uses
   `AbsRe=true`, Buffalo uses `AbsRe=true, AbsIm=true`
-- `avx2_multibrot_kernel<IsJulia, IsMandelbar, ComputeLyapunov>` — for integer
+- `avx_multibrot_kernel<IsJulia, IsMandelbar, ComputeLyapunov>` — for integer
   exponent ≥ 2; uses repeated complex multiplication (no trig), smooth coloring
   with `log(exp_n)`; covers MultiFast and Mandelbar with n≥3
-- `avx2_multibrot_slow_kernel<IsJulia, ComputeLyapunov>` — for real exponent
+- `avx_multibrot_slow_kernel<IsJulia, ComputeLyapunov>` — for real exponent
   (MultiSlow); uses polar-form z^n via SLEEF vectorized log, exp, atan2, sincos
 
 All three templates have a `ComputeLyapunov` bool (default `false`). When `true`,
 they accumulate `log|f'(z)| = log(n) + (n-1)/2 * log(|z|²)` per iteration using
 SLEEF log, and output `lambda = sum/count` alongside the smooth value. Existing
 public wrappers are unchanged (`ComputeLyapunov=false`); Lyapunov instantiations
-are called only through `avx2_lyapunov_4()`.
+are called only through `avx_lyapunov_4()`.
 
-`avx2_lyapunov_4(formula, julia_mode, ...)` is a single dispatch function that
+`avx_lyapunov_4(formula, julia_mode, ...)` is a single dispatch function that
 covers all 14 formula × julia_mode combinations, routing to `<..., true>`
 template instantiations. It replicates the `slow_int_n` integer promotion logic
 for MultiSlow.
 
-`n=2` for Standard dispatches to `avx2_mandelbrot_4` / `avx2_julia_4`;
-`n≥3` (integer) dispatches to `avx2_multibrot_4` / `avx2_multijulia_4`;
-real exponent dispatches to `avx2_multibrot_slow_4` / `avx2_multijulia_slow_4`.
+`n=2` for Standard dispatches to `avx_mandelbrot_4` / `avx_julia_4`;
+`n≥3` (integer) dispatches to `avx_multibrot_4` / `avx_multijulia_4`;
+real exponent dispatches to `avx_multibrot_slow_4` / `avx_multijulia_slow_4`.
 
 When `multibrot_exp_f` is an exact integer (detected by `slow_int_n` in `render_tile()`),
 MultiSlow routes to the fast integer kernel instead of the polar-form kernel.
@@ -188,8 +188,8 @@ enum class FormulaType {
     Celtic      = 2,  // |Re(z^2)| + i Im(z^2) + c
     Buffalo     = 3,  // |Re(z^2)| + i|Im(z^2)| + c
     Mandelbar   = 4,  // conj(z)^n + c  (integer exp 2-8)
-    MultiFast   = 5,  // z^n + c  (integer exp 2-8, AVX2)
-    MultiSlow   = 6,  // z^n + c  (real exp, AVX2 polar form via SLEEF)
+    MultiFast   = 5,  // z^n + c  (integer exp 2-8, AVX)
+    MultiSlow   = 6,  // z^n + c  (real exp, AVX polar form via SLEEF)
 };
 constexpr int FORMULA_COUNT = 7;
 ```
@@ -199,7 +199,7 @@ Combined with `bool julia_mode` in `ViewState`, this gives 14 render combination
 `multibrot_exp` (int, 2–8) is the exponent for Mandelbar and MultiFast.
 `multibrot_exp_f` (double) is the exponent for MultiSlow; any real value is accepted.
 When `multibrot_exp_f` is an exact integer (e.g. 3.0), `render_tile()` detects this
-(`slow_int_n`) and routes to the fast AVX2 repeated-multiply kernel instead.
+(`slow_int_n`) and routes to the fast AVX repeated-multiply kernel instead.
 
 ---
 
@@ -221,12 +221,12 @@ constexpr int COLOR_MODE_COUNT = 3;
 with `LYAP_SCALE = 200.0` (one palette cycle per λ range of ~5.1).
 
 In `render_tile()`, `COLOR_SMOOTH` takes the fast path (existing per-formula
-dispatch); Lyapunov modes call `avx2_lyapunov_4()` which returns both smooth
+dispatch); Lyapunov modes call `avx_lyapunov_4()` which returns both smooth
 and lambda arrays. `COLOR_LYAPUNOV_INTERIOR` uses lambda only for interior
 points (smooth ≥ max_iter), exterior keeps escape-time coloring.
 `COLOR_LYAPUNOV_FULL` colors everything by lambda.
 
-The scalar path (remainder pixels and full rows on non-AVX2 CPUs) uses
+The scalar path (remainder pixels and full rows on non-AVX CPUs) uses
 `scalar_lyapunov_iter()` in `fractal.hpp` for Lyapunov modes — a single
 generic function covering all formulas that returns `{smooth, lambda}`.
 
@@ -242,17 +242,17 @@ Mini-map always uses `COLOR_SMOOTH` (ViewState{} defaults `color_mode=0`).
 2. `fractal.hpp` — add thin wrapper functions `foo_iter` / `foo_julia_iter` delegating
    to the appropriate scalar template (`scalar_kernel`, `scalar_multibrot_kernel`, or
    `scalar_multibrot_slow_kernel`) with the correct template parameters
-3. `fractal_avx.hpp` — declare `avx2_foo_4()` and `avx2_foo_julia_4()`
+3. `cpu_renderer_avx.hpp` — declare `avx_foo_4()` and `avx_foo_julia_4()`
 4. `cpu_renderer_avx.cpp` — choose one of two approaches:
    - **Abs-after-squaring variant** (Celtic/Buffalo style): reuse existing `AbsRe`/`AbsIm`
      template params — just add wrappers with the right `<IsJulia,...,AbsRe,AbsIm>` values
-   - **New z-update rule**: add `bool IsFoo` template parameter to `avx2_kernel`,
+   - **New z-update rule**: add `bool IsFoo` template parameter to `avx_kernel`,
      add `if constexpr (IsFoo)` branch in the z-update block, add two public wrappers:
-     `avx2_foo_4()` → `avx2_kernel<false, ..., true>(...)` and
-     `avx2_foo_julia_4()` → `avx2_kernel<true, ..., true>(...)`
-5. `cpu_renderer.cpp` — add `case FormulaType::Foo:` to both the AVX2 switch and
+     `avx_foo_4()` → `avx_kernel<false, ..., true>(...)` and
+     `avx_foo_julia_4()` → `avx_kernel<true, ..., true>(...)`
+5. `cpu_renderer.cpp` — add `case FormulaType::Foo:` to both the AVX switch and
    the scalar switch inside `render_tile()`, dispatch on `vs.julia_mode`
-6. `cpu_renderer_avx.cpp` — add `case FormulaType::Foo:` to `avx2_lyapunov_4()`
+6. `cpu_renderer_avx.cpp` — add `case FormulaType::Foo:` to `avx_lyapunov_4()`
    dispatch, calling the `<..., true>` Lyapunov template instantiation
 7. `main.cpp` — add the name string to the `names[]` array in the formula Combo
 
@@ -284,28 +284,28 @@ Also increment `PALETTE_COUNT` in `palette.hpp`.
 
 - Fractal compute always behind `IFractalRenderer`; future `OpenClRenderer` must
   be addable without touching rendering logic
-- AVX2 path must always have a scalar fallback (runtime `__builtin_cpu_supports`)
+- AVX path must always have a scalar fallback (runtime `__builtin_cpu_supports`)
 - `CpuRenderer` owns the `ThreadPool` — do not share it
 - `set_thread_count(n)` destroys and recreates the pool; only call between renders
 
 ## Performance Benchmark
 
-After any changes to iteration kernels or AVX2 code, run the CLI benchmark and
+After any changes to iteration kernels or AVX code, run the CLI benchmark and
 compare against `benchmark_baseline.txt`:
 
 ```bash
 ./build/fractal_xplorer.exe --benchmark
 ```
 
-Pass `--no-avx2` to force the scalar path at runtime (useful for testing on
-AVX2-capable machines without needing old hardware):
+Pass `--no-avx` to force the scalar path at runtime (useful for testing on
+AVX-capable machines without needing old pre-AVX hardware):
 
 ```bash
-./build/fractal_xplorer.exe --no-avx2
+./build/fractal_xplorer.exe --no-avx
 ```
 
 Single-threaded, 1920×1080, 256 iter, 16 test cases — all 8 formulas on both
-AVX2 and scalar paths. Reports Mpix/s — higher is better.
+AVX and scalar paths. Reports Mpix/s — higher is better.
 Baseline is stored in `scalar_baseline.txt` (local, not committed).
 
 ---
