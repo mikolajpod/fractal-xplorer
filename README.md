@@ -2,7 +2,7 @@
 
 A fast, no-nonsense fractal explorer for Windows.
 Renders Mandelbrot, Julia, Burning Ship, Mandelbar, and Multibrot/Multijulia fractals
-using AVX2-vectorised, multithreaded arithmetic — no GPU required.
+using AVX-vectorised, multithreaded arithmetic — no GPU required.
 
 ![Fractal Xplorer screenshot](window.png)
 
@@ -63,22 +63,22 @@ Exports are saved to the folder the exe is in.
 | Celtic (\|Re(z²)\|+c) | \|Re(z²)\| + i Im(z²) + c | Abs applied to real part of z² after squaring |
 | Buffalo (\|Re(z²)\|+i\|Im(z²)\|+c) | \|Re(z²)\| + i\|Im(z²)\| + c | Abs applied to both parts of z² after squaring |
 | Mandelbar (conj(z)^n+c) | conj(z)^n + c | Tricorn at n=2; exponent slider 2–8, (n+1)-fold symmetry |
-| Multibrot (z^n+c) | z^n + c | Integer exponent 2–8, fast AVX2 path |
-| Multibrot (z^r+c, slow) | z^r + c | Real exponent r, any value; scalar polar-form arithmetic |
+| Multibrot (z^n+c) | z^n + c | Integer exponent 2–8, fast AVX path |
+| Multibrot (z^r+c, slow) | z^r + c | Real exponent r, any value; AVX polar-form via SLEEF |
 
 **Julia mode** — checkbox below the formula selector. When enabled, each pixel is
 used as the starting point z₀ and *c* is fixed (set via the mini map or re/im inputs).
 Available for every formula — giving 14 total combinations.
 
 **Exponent (integer)** — slider 2–8, shown for Mandelbar and Multibrot (z^n+c).
-At n=2: standard degree-2 formula. At n≥3: fast AVX2 path using repeated complex
+At n=2: standard degree-2 formula. At n≥3: fast AVX path using repeated complex
 multiplication (no trig). Mandelbar at n≥3 gives (n+1)-fold rotational symmetry.
 
 **Exponent (float)** — shown for Multibrot (z^r+c, slow).
 Slider covers −10 to 10; the numeric input below accepts any real value.
 Ctrl+click on the slider to type a value directly.
-When the exponent is an exact integer (e.g. 3.0), the fast AVX2 path is used
-automatically. Non-integer exponents use scalar polar-form arithmetic.
+When the exponent is an exact integer (e.g. 3.0), the fast AVX path is used
+automatically. Non-integer exponents use AVX polar-form via SLEEF.
 
 **Iterations** — logarithmic slider, 64 – 8192 (default 256).
 Higher values reveal more detail at deep zoom at the cost of speed.
@@ -144,12 +144,12 @@ Open with `B` or **Tools → Benchmark**.
 
 Renders 1920×1080 Mandelbrot (center −0.5, width 3.5, 256 iter) for each thread
 count from 1 to the number of logical CPUs, averaging 4 runs per setting.
-Results are shown as two bar charts (AVX2 in blue, Scalar in orange), both on
+Results are shown as two bar charts (AVX in blue, Scalar in orange), both on
 the same Mpix/s scale. Hover over a bar to see the exact value.
 
 ### CLI benchmark
 
-Runs all render paths (AVX2 and scalar) single-threaded and prints a Mpix/s
+Runs all render paths (AVX and scalar) single-threaded and prints a Mpix/s
 table — useful for regression detection after code changes.
 
 **Windows (cmd.exe)** — stdout must be redirected because the exe uses the
@@ -174,7 +174,7 @@ Typical render times at 1080p, 256 iterations on a mid-range CPU:
 
 | Path | Time |
 |---|---|
-| AVX2 + 16 threads | ~35–50 ms |
+| AVX + 16 threads | ~35–50 ms |
 | Scalar + 16 threads | ~300–500 ms |
 
 The status bar shows the last render time, active path, and thread count.
@@ -191,6 +191,7 @@ pacman -S mingw-w64-x86_64-gcc \
           mingw-w64-x86_64-SDL2 \
           mingw-w64-x86_64-libpng \
           mingw-w64-x86_64-libjxl \
+          mingw-w64-x86_64-sleef \
           git
 ```
 
@@ -201,7 +202,7 @@ cmake -B build -G "MinGW Makefiles" -DCMAKE_PREFIX_PATH="/c/msys64/mingw64"
 cmake --build build -- -j$(nproc)
 ```
 
-**Package (produces `fractal_xplorer-1.6-win64.zip`):**
+**Package (produces `fractal_xplorer-1.8-win64.zip`):**
 
 ```bash
 bash package.sh
