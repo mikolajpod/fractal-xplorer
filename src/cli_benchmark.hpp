@@ -13,7 +13,7 @@ inline int run_cli_benchmark()
     CpuRenderer renderer;
     renderer.set_thread_count(1);
 
-    constexpr int W = 1920, H = 1080, RUNS = 6, BEST_N = 3;
+    constexpr int W = 1920, H = 1080, RUNS = 4, BEST_N = 2;
     PixelBuffer buf;
     buf.resize(W, H);
 
@@ -27,6 +27,7 @@ inline int run_cli_benchmark()
     };
 
     const TestCase tests[] = {
+        // AVX2 path
         {"Mandelbrot",              FormulaType::Standard,    false, 2, 2.0, false},
         {"Julia",                   FormulaType::Standard,    true,  2, 2.0, false},
         {"Burning Ship",            FormulaType::BurningShip, false, 2, 2.0, false},
@@ -35,7 +36,15 @@ inline int run_cli_benchmark()
         {"Mandelbar (n=2)",         FormulaType::Mandelbar,   false, 2, 2.0, false},
         {"Multibrot (n=3)",         FormulaType::MultiFast,   false, 3, 3.0, false},
         {"Multibrot (r=3.5, slow)", FormulaType::MultiSlow,   false, 2, 3.5, false},
-        {"Mandelbrot (scalar)",     FormulaType::Standard,    false, 2, 2.0, true },
+        // Scalar path
+        {"Mandelbrot",              FormulaType::Standard,    false, 2, 2.0, true },
+        {"Julia",                   FormulaType::Standard,    true,  2, 2.0, true },
+        {"Burning Ship",            FormulaType::BurningShip, false, 2, 2.0, true },
+        {"Celtic",                  FormulaType::Celtic,      false, 2, 2.0, true },
+        {"Buffalo",                 FormulaType::Buffalo,     false, 2, 2.0, true },
+        {"Mandelbar (n=2)",         FormulaType::Mandelbar,   false, 2, 2.0, true },
+        {"Multibrot (n=3)",         FormulaType::MultiFast,   false, 3, 3.0, true },
+        {"Multibrot (r=3.5, slow)", FormulaType::MultiSlow,   false, 2, 3.5, true },
     };
 
     printf("Fractal Xplorer CLI Benchmark\n");

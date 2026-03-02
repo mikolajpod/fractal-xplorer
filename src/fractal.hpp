@@ -7,366 +7,153 @@
 // Returns smooth iteration count for escaped points, or max_iter for interior.
 // Smooth coloring uses the "normalized iteration count" (log-log) formula.
 
-inline double mandelbrot_iter(double re, double im, int max_iter)
+// Template 1: degree-2 formulas (Standard, BurningShip, Mandelbar n=2, Celtic, Buffalo)
+template<bool IsJulia, bool IsBurningShip, bool IsMandelbar,
+         bool AbsRe = false, bool AbsIm = false>
+inline double scalar_kernel(double re, double im, double cr, double ci, int max_iter)
 {
-    double zr = 0.0, zi = 0.0;
+    double zr = IsJulia ? re : 0.0;
+    double zi = IsJulia ? im : 0.0;
+    const double c_re = IsJulia ? cr : re;
+    const double c_im = IsJulia ? ci : im;
+    const double log2 = std::log(2.0);
     int i = 0;
     while (i < max_iter) {
-        double zr2 = zr * zr, zi2 = zi * zi;
+        const double zr2 = zr*zr, zi2 = zi*zi;
         if (zr2 + zi2 > 4.0) {
-            double log_zn = std::log(zr2 + zi2) * 0.5;
-            double nu     = std::log(log_zn / std::log(2.0)) / std::log(2.0);
+            const double log_zn = std::log(zr2 + zi2) * 0.5;
+            const double nu     = std::log(log_zn / log2) / log2;
             return std::max(0.0, static_cast<double>(i) + 1.0 - nu);
         }
-        double new_zr = zr2 - zi2 + re;
-        zi = 2.0 * zr * zi + im;
+        double new_zr, new_zi;
+        if constexpr (IsBurningShip) {
+            new_zr = zr2 - zi2 + c_re;
+            new_zi = std::abs(2.0 * zr * zi) + c_im;
+        } else if constexpr (AbsRe || AbsIm) {
+            new_zr = (AbsRe ? std::abs(zr2 - zi2) : zr2 - zi2) + c_re;
+            new_zi = (AbsIm ? std::abs(2.0*zr*zi) : 2.0*zr*zi) + c_im;
+        } else {
+            new_zr = zr2 - zi2 + c_re;
+            new_zi = (IsMandelbar ? -2.0*zr*zi : 2.0*zr*zi) + c_im;
+        }
         zr = new_zr;
+        zi = new_zi;
         ++i;
     }
     return static_cast<double>(max_iter);
 }
+
+// Template 2: integer exponent >= 2 (MultiFast, Mandelbar n>=3)
+template<bool IsJulia, bool IsMandelbar = false>
+inline double scalar_multibrot_kernel(double re, double im, double cr, double ci,
+                                       int max_iter, int n)
+{
+    double zr = IsJulia ? re : 0.0;
+    double zi = IsJulia ? im : 0.0;
+    const double c_re = IsJulia ? cr : re;
+    const double c_im = IsJulia ? ci : im;
+    const double log_n = std::log(static_cast<double>(n));
+    int i = 0;
+    while (i < max_iter) {
+        const double zr2 = zr*zr, zi2 = zi*zi;
+        if (zr2 + zi2 > 4.0) {
+            const double log_zn = std::log(zr2 + zi2) * 0.5;
+            const double nu     = std::log(log_zn / log_n) / log_n;
+            return std::max(0.0, static_cast<double>(i) + 1.0 - nu);
+        }
+        double pr = zr, pi = zi;
+        for (int k = 1; k < n; ++k) {
+            const double new_pr = pr*zr - pi*zi;
+            pi = pr*zi + pi*zr;
+            pr = new_pr;
+        }
+        zr =              pr + c_re;
+        zi = (IsMandelbar ? -pi : pi) + c_im;
+        ++i;
+    }
+    return static_cast<double>(max_iter);
+}
+
+// Template 3: real exponent (MultiSlow) via polar form
+template<bool IsJulia>
+inline double scalar_multibrot_slow_kernel(double re, double im, double cr, double ci,
+                                            int max_iter, double n)
+{
+    double zr = IsJulia ? re : 0.0;
+    double zi = IsJulia ? im : 0.0;
+    const double c_re = IsJulia ? cr : re;
+    const double c_im = IsJulia ? ci : im;
+    const double log_n = std::log(n);
+    int i = 0;
+    while (i < max_iter) {
+        const double mag2 = zr*zr + zi*zi;
+        if (mag2 > 4.0) {
+            const double log_zn = std::log(mag2) * 0.5;
+            const double nu     = std::log(log_zn / log_n) / log_n;
+            return std::max(0.0, static_cast<double>(i) + 1.0 - nu);
+        }
+        if (mag2 == 0.0) { zr = c_re; zi = c_im; }
+        else {
+            const double r_n   = std::exp(n * std::log(mag2) * 0.5);
+            const double theta = std::atan2(zi, zr);
+            zr = r_n * std::cos(n * theta) + c_re;
+            zi = r_n * std::sin(n * theta) + c_im;
+        }
+        ++i;
+    }
+    return static_cast<double>(max_iter);
+}
+
+// Named wrappers — thin one-liners; all call sites unchanged.
+inline double mandelbrot_iter(double re, double im, int max_iter)
+    { return scalar_kernel<false,false,false>(re, im, 0, 0, max_iter); }
 
 inline double julia_iter(double re, double im, double cr, double ci, int max_iter)
-{
-    double zr = re, zi = im;
-    int i = 0;
-    while (i < max_iter) {
-        double zr2 = zr * zr, zi2 = zi * zi;
-        if (zr2 + zi2 > 4.0) {
-            double log_zn = std::log(zr2 + zi2) * 0.5;
-            double nu     = std::log(log_zn / std::log(2.0)) / std::log(2.0);
-            return std::max(0.0, static_cast<double>(i) + 1.0 - nu);
-        }
-        double new_zr = zr2 - zi2 + cr;
-        zi = 2.0 * zr * zi + ci;
-        zr = new_zr;
-        ++i;
-    }
-    return static_cast<double>(max_iter);
-}
+    { return scalar_kernel<true,false,false>(re, im, cr, ci, max_iter); }
 
-// z_{n+1} = conj(z)^2 + c  (Tricorn / Mandelbar)
 inline double mandelbar_iter(double re, double im, int max_iter)
-{
-    double zr = 0.0, zi = 0.0;
-    int i = 0;
-    while (i < max_iter) {
-        double zr2 = zr * zr, zi2 = zi * zi;
-        if (zr2 + zi2 > 4.0) {
-            double log_zn = std::log(zr2 + zi2) * 0.5;
-            double nu     = std::log(log_zn / std::log(2.0)) / std::log(2.0);
-            return std::max(0.0, static_cast<double>(i) + 1.0 - nu);
-        }
-        double new_zr =  zr2 - zi2 + re;
-        zi            = -2.0 * zr * zi + im;   // conjugate: negate zi term
-        zr = new_zr;
-        ++i;
-    }
-    return static_cast<double>(max_iter);
-}
+    { return scalar_kernel<false,false,true>(re, im, 0, 0, max_iter); }
 
-// z_{n+1} = z_n^exp + c, z_0 = 0  (Multibrot slow, real exponent)
-// Uses polar form: z^n = |z|^n * (cos(n*arg(z)) + i*sin(n*arg(z)))
-inline double multibrot_slow_iter(double re, double im, int max_iter, double n)
-{
-    double zr = 0.0, zi = 0.0;
-    const double log_n = std::log(n);
-    int i = 0;
-    while (i < max_iter) {
-        const double mag2 = zr * zr + zi * zi;
-        if (mag2 > 4.0) {
-            const double log_zn = std::log(mag2) * 0.5;
-            const double nu     = std::log(log_zn / log_n) / log_n;
-            return std::max(0.0, static_cast<double>(i) + 1.0 - nu);
-        }
-        if (mag2 == 0.0) { zr = re; zi = im; }
-        else {
-            const double r_n   = std::exp(n * std::log(mag2) * 0.5);
-            const double theta = std::atan2(zi, zr);
-            zr = r_n * std::cos(n * theta) + re;
-            zi = r_n * std::sin(n * theta) + im;
-        }
-        ++i;
-    }
-    return static_cast<double>(max_iter);
-}
-
-// z_{n+1} = z_n^exp + c, z_0 = pixel  (Multijulia slow, real exponent)
-inline double multijulia_slow_iter(double re, double im, double cr, double ci,
-                                    int max_iter, double n)
-{
-    double zr = re, zi = im;
-    const double log_n = std::log(n);
-    int i = 0;
-    while (i < max_iter) {
-        const double mag2 = zr * zr + zi * zi;
-        if (mag2 > 4.0) {
-            const double log_zn = std::log(mag2) * 0.5;
-            const double nu     = std::log(log_zn / log_n) / log_n;
-            return std::max(0.0, static_cast<double>(i) + 1.0 - nu);
-        }
-        if (mag2 == 0.0) { zr = cr; zi = ci; }
-        else {
-            const double r_n   = std::exp(n * std::log(mag2) * 0.5);
-            const double theta = std::atan2(zi, zr);
-            zr = r_n * std::cos(n * theta) + cr;
-            zi = r_n * std::sin(n * theta) + ci;
-        }
-        ++i;
-    }
-    return static_cast<double>(max_iter);
-}
-
-// z_{n+1} = z_n^exp + c, z_0 = 0  (Multibrot, integer exponent >= 2)
-// Smooth coloring uses log(exp) instead of log(2).
-inline double multibrot_iter(double re, double im, int max_iter, int n)
-{
-    double zr = 0.0, zi = 0.0;
-    const double log_n = std::log(static_cast<double>(n));
-    int i = 0;
-    while (i < max_iter) {
-        const double zr2 = zr * zr, zi2 = zi * zi;
-        if (zr2 + zi2 > 4.0) {
-            const double log_zn = std::log(zr2 + zi2) * 0.5;
-            const double nu     = std::log(log_zn / log_n) / log_n;
-            return std::max(0.0, static_cast<double>(i) + 1.0 - nu);
-        }
-        // z^n via repeated complex multiplication
-        double pr = zr, pi = zi;
-        for (int k = 1; k < n; ++k) {
-            const double new_pr = pr * zr - pi * zi;
-            pi = pr * zi + pi * zr;
-            pr = new_pr;
-        }
-        zr = pr + re;
-        zi = pi + im;
-        ++i;
-    }
-    return static_cast<double>(max_iter);
-}
-
-// z_{n+1} = z_n^exp + c, z_0 = pixel  (Multijulia, integer exponent >= 2)
-inline double multijulia_iter(double re, double im, double cr, double ci,
-                               int max_iter, int n)
-{
-    double zr = re, zi = im;
-    const double log_n = std::log(static_cast<double>(n));
-    int i = 0;
-    while (i < max_iter) {
-        const double zr2 = zr * zr, zi2 = zi * zi;
-        if (zr2 + zi2 > 4.0) {
-            const double log_zn = std::log(zr2 + zi2) * 0.5;
-            const double nu     = std::log(log_zn / log_n) / log_n;
-            return std::max(0.0, static_cast<double>(i) + 1.0 - nu);
-        }
-        double pr = zr, pi = zi;
-        for (int k = 1; k < n; ++k) {
-            const double new_pr = pr * zr - pi * zi;
-            pi = pr * zi + pi * zr;
-            pr = new_pr;
-        }
-        zr = pr + cr;
-        zi = pi + ci;
-        ++i;
-    }
-    return static_cast<double>(max_iter);
-}
-
-// z_{n+1} = conj(z)^n + c, z_0 = 0  (Mandelbar, integer exponent >= 3)
-// conj(z)^n = conj(z^n), so: compute z^n via repeated multiply, then negate zi
-inline double mandelbar_multi_iter(double re, double im, int max_iter, int n)
-{
-    double zr = 0.0, zi = 0.0;
-    const double log_n = std::log(static_cast<double>(n));
-    int i = 0;
-    while (i < max_iter) {
-        const double zr2 = zr * zr, zi2 = zi * zi;
-        if (zr2 + zi2 > 4.0) {
-            const double log_zn = std::log(zr2 + zi2) * 0.5;
-            const double nu     = std::log(log_zn / log_n) / log_n;
-            return std::max(0.0, static_cast<double>(i) + 1.0 - nu);
-        }
-        double pr = zr, pi = zi;
-        for (int k = 1; k < n; ++k) {
-            const double new_pr = pr * zr - pi * zi;
-            pi = pr * zi + pi * zr;
-            pr = new_pr;
-        }
-        zr =  pr + re;
-        zi = -pi + im;   // conjugate: negate imaginary part of z^n
-        ++i;
-    }
-    return static_cast<double>(max_iter);
-}
-
-// z_{n+1} = (|Re(z)| + i|Im(z)|)^2 + c
-inline double burning_ship_iter(double re, double im, int max_iter)
-{
-    double zr = 0.0, zi = 0.0;
-    int i = 0;
-    while (i < max_iter) {
-        double zr2 = zr * zr, zi2 = zi * zi;
-        if (zr2 + zi2 > 4.0) {
-            double log_zn = std::log(zr2 + zi2) * 0.5;
-            double nu     = std::log(log_zn / std::log(2.0)) / std::log(2.0);
-            return std::max(0.0, static_cast<double>(i) + 1.0 - nu);
-        }
-        double new_zr = zr2 - zi2 + re;
-        double new_zi = 2.0 * std::abs(zr) * std::abs(zi) + im;
-        zr = new_zr;
-        zi = new_zi;
-        ++i;
-    }
-    return static_cast<double>(max_iter);
-}
-
-// z_{n+1} = (|Re(z)| + i|Im(z)|)^2 + c, z_0 = pixel  (Burning Ship Julia)
-inline double burning_ship_julia_iter(double re, double im, double cr, double ci, int max_iter)
-{
-    double zr = re, zi = im;
-    int i = 0;
-    while (i < max_iter) {
-        double zr2 = zr * zr, zi2 = zi * zi;
-        if (zr2 + zi2 > 4.0) {
-            double log_zn = std::log(zr2 + zi2) * 0.5;
-            double nu     = std::log(log_zn / std::log(2.0)) / std::log(2.0);
-            return std::max(0.0, static_cast<double>(i) + 1.0 - nu);
-        }
-        double new_zr = zr2 - zi2 + cr;
-        double new_zi = 2.0 * std::abs(zr) * std::abs(zi) + ci;
-        zr = new_zr;
-        zi = new_zi;
-        ++i;
-    }
-    return static_cast<double>(max_iter);
-}
-
-// z_{n+1} = conj(z)^2 + c, z_0 = pixel  (Mandelbar Julia)
 inline double mandelbar_julia_iter(double re, double im, double cr, double ci, int max_iter)
-{
-    double zr = re, zi = im;
-    int i = 0;
-    while (i < max_iter) {
-        double zr2 = zr * zr, zi2 = zi * zi;
-        if (zr2 + zi2 > 4.0) {
-            double log_zn = std::log(zr2 + zi2) * 0.5;
-            double nu     = std::log(log_zn / std::log(2.0)) / std::log(2.0);
-            return std::max(0.0, static_cast<double>(i) + 1.0 - nu);
-        }
-        double new_zr =  zr2 - zi2 + cr;
-        zi            = -2.0 * zr * zi + ci;  // conjugate: negate zi term
-        zr = new_zr;
-        ++i;
-    }
-    return static_cast<double>(max_iter);
-}
+    { return scalar_kernel<true,false,true>(re, im, cr, ci, max_iter); }
 
-// z_{n+1} = |Re(z^2)| + i Im(z^2) + c  (Celtic)
+inline double burning_ship_iter(double re, double im, int max_iter)
+    { return scalar_kernel<false,true,false>(re, im, 0, 0, max_iter); }
+
+inline double burning_ship_julia_iter(double re, double im, double cr, double ci, int max_iter)
+    { return scalar_kernel<true,true,false>(re, im, cr, ci, max_iter); }
+
 inline double celtic_iter(double re, double im, int max_iter)
-{
-    double zr = 0.0, zi = 0.0;
-    int i = 0;
-    while (i < max_iter) {
-        double zr2 = zr * zr, zi2 = zi * zi;
-        if (zr2 + zi2 > 4.0) {
-            double log_zn = std::log(zr2 + zi2) * 0.5;
-            double nu     = std::log(log_zn / std::log(2.0)) / std::log(2.0);
-            return std::max(0.0, static_cast<double>(i) + 1.0 - nu);
-        }
-        double new_zr = std::abs(zr2 - zi2) + re;
-        zi = 2.0 * zr * zi + im;
-        zr = new_zr;
-        ++i;
-    }
-    return static_cast<double>(max_iter);
-}
+    { return scalar_kernel<false,false,false,true,false>(re, im, 0, 0, max_iter); }
 
-// z_{n+1} = |Re(z^2)| + i Im(z^2) + c, z_0 = pixel  (Celtic Julia)
 inline double celtic_julia_iter(double re, double im, double cr, double ci, int max_iter)
-{
-    double zr = re, zi = im;
-    int i = 0;
-    while (i < max_iter) {
-        double zr2 = zr * zr, zi2 = zi * zi;
-        if (zr2 + zi2 > 4.0) {
-            double log_zn = std::log(zr2 + zi2) * 0.5;
-            double nu     = std::log(log_zn / std::log(2.0)) / std::log(2.0);
-            return std::max(0.0, static_cast<double>(i) + 1.0 - nu);
-        }
-        double new_zr = std::abs(zr2 - zi2) + cr;
-        zi = 2.0 * zr * zi + ci;
-        zr = new_zr;
-        ++i;
-    }
-    return static_cast<double>(max_iter);
-}
+    { return scalar_kernel<true,false,false,true,false>(re, im, cr, ci, max_iter); }
 
-// z_{n+1} = |Re(z^2)| + i|Im(z^2)| + c  (Buffalo)
 inline double buffalo_iter(double re, double im, int max_iter)
-{
-    double zr = 0.0, zi = 0.0;
-    int i = 0;
-    while (i < max_iter) {
-        double zr2 = zr * zr, zi2 = zi * zi;
-        if (zr2 + zi2 > 4.0) {
-            double log_zn = std::log(zr2 + zi2) * 0.5;
-            double nu     = std::log(log_zn / std::log(2.0)) / std::log(2.0);
-            return std::max(0.0, static_cast<double>(i) + 1.0 - nu);
-        }
-        double new_zr = std::abs(zr2 - zi2) + re;
-        zi = std::abs(2.0 * zr * zi) + im;
-        zr = new_zr;
-        ++i;
-    }
-    return static_cast<double>(max_iter);
-}
+    { return scalar_kernel<false,false,false,true,true>(re, im, 0, 0, max_iter); }
 
-// z_{n+1} = |Re(z^2)| + i|Im(z^2)| + c, z_0 = pixel  (Buffalo Julia)
 inline double buffalo_julia_iter(double re, double im, double cr, double ci, int max_iter)
-{
-    double zr = re, zi = im;
-    int i = 0;
-    while (i < max_iter) {
-        double zr2 = zr * zr, zi2 = zi * zi;
-        if (zr2 + zi2 > 4.0) {
-            double log_zn = std::log(zr2 + zi2) * 0.5;
-            double nu     = std::log(log_zn / std::log(2.0)) / std::log(2.0);
-            return std::max(0.0, static_cast<double>(i) + 1.0 - nu);
-        }
-        double new_zr = std::abs(zr2 - zi2) + cr;
-        zi = std::abs(2.0 * zr * zi) + ci;
-        zr = new_zr;
-        ++i;
-    }
-    return static_cast<double>(max_iter);
-}
+    { return scalar_kernel<true,false,false,true,true>(re, im, cr, ci, max_iter); }
 
-// z_{n+1} = conj(z)^n + c, z_0 = pixel  (Mandelbar Julia, integer exp >= 3)
+inline double multibrot_iter(double re, double im, int max_iter, int n)
+    { return scalar_multibrot_kernel<false>(re, im, 0, 0, max_iter, n); }
+
+inline double multijulia_iter(double re, double im, double cr, double ci, int max_iter, int n)
+    { return scalar_multibrot_kernel<true>(re, im, cr, ci, max_iter, n); }
+
+inline double mandelbar_multi_iter(double re, double im, int max_iter, int n)
+    { return scalar_multibrot_kernel<false,true>(re, im, 0, 0, max_iter, n); }
+
 inline double mandelbar_multi_julia_iter(double re, double im, double cr, double ci,
                                           int max_iter, int n)
-{
-    double zr = re, zi = im;
-    const double log_n = std::log(static_cast<double>(n));
-    int i = 0;
-    while (i < max_iter) {
-        const double zr2 = zr * zr, zi2 = zi * zi;
-        if (zr2 + zi2 > 4.0) {
-            const double log_zn = std::log(zr2 + zi2) * 0.5;
-            const double nu     = std::log(log_zn / log_n) / log_n;
-            return std::max(0.0, static_cast<double>(i) + 1.0 - nu);
-        }
-        double pr = zr, pi = zi;
-        for (int k = 1; k < n; ++k) {
-            const double new_pr = pr * zr - pi * zi;
-            pi = pr * zi + pi * zr;
-            pr = new_pr;
-        }
-        zr =  pr + cr;
-        zi = -pi + ci;  // conjugate: negate imaginary part of z^n
-        ++i;
-    }
-    return static_cast<double>(max_iter);
-}
+    { return scalar_multibrot_kernel<true,true>(re, im, cr, ci, max_iter, n); }
+
+inline double multibrot_slow_iter(double re, double im, int max_iter, double n)
+    { return scalar_multibrot_slow_kernel<false>(re, im, 0, 0, max_iter, n); }
+
+inline double multijulia_slow_iter(double re, double im, double cr, double ci,
+                                    int max_iter, double n)
+    { return scalar_multibrot_slow_kernel<true>(re, im, cr, ci, max_iter, n); }
 
 // Generic scalar Lyapunov iteration: returns {smooth, lambda} for any formula.
 // lambda = (1/N) * sum(log|f'(z_k)|), where log|f'(z)| = log(n) + (n-1)/2 * log(|z|^2).
