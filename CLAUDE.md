@@ -84,7 +84,7 @@ Do not change this layout without updating all three output paths.
 |---|---|
 | `view_state.hpp` | `FormulaType` enum + `ColorMode` enum + `ViewState` struct + `zoom_display()` + `fractal_name()` + `reset_view_keep_params()` |
 | `renderer.hpp` | `IFractalRenderer` interface, `PixelBuffer` |
-| `fractal.hpp` | Scalar iteration kernels (Mandelbrot, Julia, Burning Ship, Mandelbar, Multibrot, Multijulia, Celtic, Buffalo) |
+| `fractal.hpp` | Scalar iteration kernels — 3 templates (`scalar_kernel`, `scalar_multibrot_kernel`, `scalar_multibrot_slow_kernel`) + thin named wrappers; `scalar_lyapunov_iter`; `compute_orbit` |
 | `fractal_avx.hpp` | Declarations for AVX2 entry points |
 | `cpu_renderer_avx.cpp` | AVX2+FMA+SLEEF kernels — compiled with `-O2 -mavx2 -mfma` |
 | `cpu_renderer.hpp/.cpp` | Thread pool tile dispatch, AVX2 runtime detection, `set_thread_count()` |
@@ -125,6 +125,14 @@ The AVX2 path accumulates `iters_d` by adding 1.0 per active lane per iteration
 **AVX2 smooth coloring** uses SLEEF `Sleef_logd4_u35` (vectorized log) instead of
 extracting to scalar, computing 4 logs, and reinserting. This applies to all three
 kernel templates.
+
+**Scalar kernel structure** — `fractal.hpp` mirrors the AVX2 structure with three templates:
+- `scalar_kernel<IsJulia, IsBurningShip, IsMandelbar, AbsRe, AbsIm>` — degree-2 formulas
+- `scalar_multibrot_kernel<IsJulia, IsMandelbar>` — integer exponent ≥ 2
+- `scalar_multibrot_slow_kernel<IsJulia>` — real exponent (polar form)
+
+All 16 named `*_iter()` functions are one-liner wrappers around these templates.
+`scalar_lyapunov_iter()` and `compute_orbit()` remain independent (use their own switch).
 
 **AVX2 kernel structure** — `cpu_renderer_avx.cpp` contains three templates:
 - `avx2_kernel<IsJulia, IsBurningShip, IsMandelbar, AbsRe, AbsIm, ComputeLyapunov>`
@@ -231,8 +239,9 @@ Mini-map always uses `COLOR_SMOOTH` (ViewState{} defaults `color_mode=0`).
 7 places, 4 files — follow the Burning Ship + Julia pattern:
 
 1. `view_state.hpp` — add enum value to `FormulaType`, update `fractal_name()`, bump `FORMULA_COUNT`
-2. `fractal.hpp` — add scalar `foo_iter(re, im, max_iter)` and
-   `foo_julia_iter(re, im, cr, ci, max_iter)` inline functions
+2. `fractal.hpp` — add thin wrapper functions `foo_iter` / `foo_julia_iter` delegating
+   to the appropriate scalar template (`scalar_kernel`, `scalar_multibrot_kernel`, or
+   `scalar_multibrot_slow_kernel`) with the correct template parameters
 3. `fractal_avx.hpp` — declare `avx2_foo_4()` and `avx2_foo_julia_4()`
 4. `cpu_renderer_avx.cpp` — choose one of two approaches:
    - **Abs-after-squaring variant** (Celtic/Buffalo style): reuse existing `AbsRe`/`AbsIm`
@@ -295,9 +304,9 @@ AVX2-capable machines without needing old hardware):
 ./build/fractal_xplorer.exe --no-avx2
 ```
 
-Single-threaded, 1920×1080, 256 iter, 9 test cases covering all AVX2 kernel
-instantiations plus scalar fallbacks. Reports Mpix/s — higher is better.
-Baseline is stored in `benchmark_baseline.txt` (local, not committed).
+Single-threaded, 1920×1080, 256 iter, 16 test cases — all 8 formulas on both
+AVX2 and scalar paths. Reports Mpix/s — higher is better.
+Baseline is stored in `scalar_baseline.txt` (local, not committed).
 
 ---
 
