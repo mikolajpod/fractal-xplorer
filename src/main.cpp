@@ -6,7 +6,7 @@
 
 #include "app_state.hpp"
 #include "ui_panels.hpp"
-#include "fractal.hpp"
+#include "escape_time.hpp"
 #include "palette.hpp"
 #include "cli_benchmark.hpp"
 

@@ -1,6 +1,6 @@
 #include "ui_panels.hpp"
 #include "app_state.hpp"
-#include "fractal.hpp"
+#include "escape_time.hpp"
 #include "palette.hpp"
 #include "export.hpp"
 #include "imgui.h"

@@ -2,7 +2,7 @@
 
 #include "view_state.hpp"   // FormulaType
 
-// AVX accelerated fractal kernels — implementations in cpu_renderer_avx.cpp
+// AVX accelerated escape-time kernels — implementations in escape_time_avx.cpp
 // Each function computes 4 consecutive horizontal pixels at once.
 // re0:   real coordinate of the leftmost of the 4 pixels
 // scale: complex units per pixel

@@ -87,10 +87,10 @@ Do not change this layout without updating all three output paths.
 |---|---|
 | `view_state.hpp` | `FractalMode` + `FormulaType` + `ColorMode` enums, `ViewState` struct, `zoom_display()`, `fractal_name()`, `reset_view_keep_params()`, `newton_init_roots()`, `newton_expand_roots()` |
 | `renderer.hpp` | `IFractalRenderer` interface, `PixelBuffer` |
-| `fractal.hpp` | Scalar iteration kernels — 3 templates (`scalar_kernel`, `scalar_multibrot_kernel`, `scalar_multibrot_slow_kernel`) + thin named wrappers; `scalar_lyapunov_iter`; `compute_orbit` |
+| `escape_time.hpp` | Scalar iteration kernels — 3 templates (`scalar_kernel`, `scalar_multibrot_kernel`, `scalar_multibrot_slow_kernel`) + thin named wrappers; `scalar_lyapunov_iter`; `compute_orbit` |
 | `newton.hpp` | Scalar Newton kernel: `horner_eval()`, `newton_iter()` |
-| `cpu_renderer_avx.hpp` | Declarations for AVX escape-time entry points |
-| `cpu_renderer_avx.cpp` | AVX+SLEEF escape-time kernels — compiled with `-O2 -mavx` |
+| `escape_time_avx.hpp` | Declarations for AVX escape-time entry points |
+| `escape_time_avx.cpp` | AVX+SLEEF escape-time kernels — compiled with `-O2 -mavx` |
 | `newton_avx.hpp` | Declaration for `avx_newton_4()` |
 | `newton_avx.cpp` | AVX Newton kernel — compiled with `-O2 -mavx` (no SLEEF needed) |
 | `cpu_renderer.hpp/.cpp` | Thread pool tile dispatch, AVX runtime detection, `set_thread_count()` |
@@ -107,7 +107,7 @@ Do not change this layout without updating all three output paths.
 
 ## Key Invariants
 
-**AVX separate translation units** — `cpu_renderer_avx.cpp` and `newton_avx.cpp`
+**AVX separate translation units** — `escape_time_avx.cpp` and `newton_avx.cpp`
 are compiled with `-mavx` while everything else is not. This allows runtime
 detection via `__builtin_cpu_supports("avx")` with a scalar fallback. Never
 `#include` AVX intrinsic code from another file or move it into a header.
@@ -132,7 +132,7 @@ The AVX path accumulates `iters_d` by adding 1.0 per active lane per iteration
 extracting to scalar, computing 4 logs, and reinserting. This applies to all three
 kernel templates.
 
-**Scalar kernel structure** — `fractal.hpp` mirrors the AVX structure with three templates:
+**Scalar kernel structure** — `escape_time.hpp` mirrors the AVX structure with three templates:
 - `scalar_kernel<IsJulia, IsBurningShip, IsMandelbar, AbsRe, AbsIm>` — degree-2 formulas
 - `scalar_multibrot_kernel<IsJulia, IsMandelbar>` — integer exponent ≥ 2
 - `scalar_multibrot_slow_kernel<IsJulia>` — real exponent (polar form)
@@ -140,7 +140,7 @@ kernel templates.
 All 16 named `*_iter()` functions are one-liner wrappers around these templates.
 `scalar_lyapunov_iter()` and `compute_orbit()` remain independent (use their own switch).
 
-**AVX kernel structure** — `cpu_renderer_avx.cpp` contains three templates:
+**AVX kernel structure** — `escape_time_avx.cpp` contains three templates:
 - `avx_kernel<IsJulia, IsBurningShip, IsMandelbar, AbsRe, AbsIm, ComputeLyapunov>`
   — for degree-2 formulas; 12 public wrappers cover all (formula × julia_mode)
   combinations; uses FMA squaring for Standard/Mandelbar/BurningShip; Celtic uses
@@ -264,7 +264,7 @@ points (smooth ≥ max_iter), exterior keeps escape-time coloring.
 `COLOR_LYAPUNOV_FULL` colors everything by lambda.
 
 The scalar path (remainder pixels and full rows on non-AVX CPUs) uses
-`scalar_lyapunov_iter()` in `fractal.hpp` for Lyapunov modes — a single
+`scalar_lyapunov_iter()` in `escape_time.hpp` for Lyapunov modes — a single
 generic function covering all formulas that returns `{smooth, lambda}`.
 
 Mini-map always uses `COLOR_SMOOTH` (ViewState{} defaults `color_mode=0`).
@@ -276,11 +276,11 @@ Mini-map always uses `COLOR_SMOOTH` (ViewState{} defaults `color_mode=0`).
 7 places, 4 files — follow the Burning Ship + Julia pattern:
 
 1. `view_state.hpp` — add enum value to `FormulaType`, update `fractal_name()`, bump `FORMULA_COUNT`
-2. `fractal.hpp` — add thin wrapper functions `foo_iter` / `foo_julia_iter` delegating
+2. `escape_time.hpp` — add thin wrapper functions `foo_iter` / `foo_julia_iter` delegating
    to the appropriate scalar template (`scalar_kernel`, `scalar_multibrot_kernel`, or
    `scalar_multibrot_slow_kernel`) with the correct template parameters
-3. `cpu_renderer_avx.hpp` — declare `avx_foo_4()` and `avx_foo_julia_4()`
-4. `cpu_renderer_avx.cpp` — choose one of two approaches:
+3. `escape_time_avx.hpp` — declare `avx_foo_4()` and `avx_foo_julia_4()`
+4. `escape_time_avx.cpp` — choose one of two approaches:
    - **Abs-after-squaring variant** (Celtic/Buffalo style): reuse existing `AbsRe`/`AbsIm`
      template params — just add wrappers with the right `<IsJulia,...,AbsRe,AbsIm>` values
    - **New z-update rule**: add `bool IsFoo` template parameter to `avx_kernel`,
@@ -289,7 +289,7 @@ Mini-map always uses `COLOR_SMOOTH` (ViewState{} defaults `color_mode=0`).
      `avx_foo_julia_4()` → `avx_kernel<true, ..., true>(...)`
 5. `cpu_renderer.cpp` — add `case FormulaType::Foo:` to both the AVX switch and
    the scalar switch inside `render_tile()`, dispatch on `vs.julia_mode`
-6. `cpu_renderer_avx.cpp` — add `case FormulaType::Foo:` to `avx_lyapunov_4()`
+6. `escape_time_avx.cpp` — add `case FormulaType::Foo:` to `avx_lyapunov_4()`
    dispatch, calling the `<..., true>` Lyapunov template instantiation
 7. `main.cpp` — add the name string to the `names[]` array in the formula Combo
 
@@ -365,7 +365,7 @@ is better. Baseline is stored in `scalar_baseline.txt` (local, not committed).
   positions. Left-drag near a root dot (8px hit radius) drags it, updating
   `newton_roots_re/im` and setting `newton_coeffs_dirty`. Right-drag pans, scroll
   zooms. Reset button restores roots to unit circle and minimap to default view.
-- **Orbit:** `compute_orbit()` in `fractal.hpp` returns up to 20 z-trajectory
+- **Orbit:** `compute_orbit()` in `escape_time.hpp` returns up to 20 z-trajectory
   points for any formula+julia_mode. Enabled by "Show orbit" checkbox; Ctrl+click
   in the render area picks the seed; drawn as dots (red seed, yellow rest) using
   `ImDrawList` inside `##render`. The orbit Ctrl+click suppresses the pan handler

@@ -1,6 +1,6 @@
 // Compiled with -mavx only — do NOT include from other translation units.
 
-#include "cpu_renderer_avx.hpp"
+#include "escape_time_avx.hpp"
 
 #include <immintrin.h>
 #include <sleef.h>

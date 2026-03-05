@@ -40,7 +40,7 @@ add_executable(fractal_xplorer
     src/main.cpp
     src/ui_panels.cpp
     src/cpu_renderer.cpp
-    src/cpu_renderer_avx.cpp
+    src/escape_time_avx.cpp
     src/newton_avx.cpp
     src/palette.cpp
     src/export.cpp
@@ -74,7 +74,7 @@ endif()
 target_compile_options(fractal_xplorer PRIVATE -O2)
 
 # AVX only for the files that actually use intrinsics
-set_source_files_properties(src/cpu_renderer_avx.cpp PROPERTIES
+set_source_files_properties(src/escape_time_avx.cpp PROPERTIES
     COMPILE_OPTIONS "-O2;-mavx"
 )
 set_source_files_properties(src/newton_avx.cpp PROPERTIES

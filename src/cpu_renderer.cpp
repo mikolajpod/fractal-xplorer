@@ -1,6 +1,6 @@
 #include "cpu_renderer.hpp"
-#include "fractal.hpp"
-#include "cpu_renderer_avx.hpp"
+#include "escape_time.hpp"
+#include "escape_time_avx.hpp"
 #include "newton.hpp"
 #include "newton_avx.hpp"
 #include "palette.hpp"
