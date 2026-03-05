@@ -124,9 +124,9 @@ instantly on every Ctrl+click; uncheck to hide it.
 
 ### Newton Tab
 
-Newton fractals visualize the basins of attraction of Newton's root-finding
-method applied to a polynomial. Pixels are colored by *which* root they converge
-to, with brightness indicating convergence speed.
+Newton fractals visualize the basins of attraction of the Newton-Raphson
+root-finding method applied to a polynomial. Pixels are colored by *which* root
+they converge to, with brightness indicating convergence speed.
 
 **Degree** — slider 2–8. Changes the polynomial degree; roots are automatically
 placed evenly on the unit circle when the degree changes.

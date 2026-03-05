@@ -211,8 +211,8 @@ enum class FractalMode { EscapeTime = 0, Newton = 1 };
 ```
 
 `EscapeTime` uses the escape-time formula dispatch (7 formula types × Julia mode).
-`Newton` uses Newton's method on a user-defined polynomial (degree 2–8 with
-draggable roots).
+`Newton` uses the Newton-Raphson method on a user-defined polynomial (degree 2–8
+with draggable roots).
 
 ---
 
