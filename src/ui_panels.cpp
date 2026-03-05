@@ -16,22 +16,46 @@
 static const float PANEL_WIDTH = 280.0f;
 
 // ---------------------------------------------------------------------------
-// Side panel: formula, exponent, iterations, palette, minimap, orbit
+// Helper: draw minimap with right-drag pan and scroll zoom
 // ---------------------------------------------------------------------------
-void draw_side_panel(AppState& app, const ImGuiIO& io, float menu_h, float fh)
+static void draw_minimap_nav(AppState& app, const ImGuiIO& io,
+                              float map_w, float map_h, float map_scale,
+                              const ImVec2& map_tl, bool map_hovered)
 {
-    static const float STATUS_HEIGHT = 24.0f;
+    // Right-click drag: pan minimap
+    if (map_hovered && ImGui::IsMouseClicked(ImGuiMouseButton_Right)) {
+        app.mini_panning         = true;
+        app.mini_pan_start_mouse = io.MousePos;
+        app.mini_pan_start_cx    = app.mini_cx;
+        app.mini_pan_start_cy    = app.mini_cy;
+    }
+    if (!ImGui::IsMouseDown(ImGuiMouseButton_Right))
+        app.mini_panning = false;
 
-    ImGui::SetNextWindowPos(ImVec2(0.0f, menu_h));
-    ImGui::SetNextWindowSize(ImVec2(PANEL_WIDTH, fh - menu_h - STATUS_HEIGHT));
-    ImGui::Begin("##panel", nullptr,
-        ImGuiWindowFlags_NoTitleBar            |
-        ImGuiWindowFlags_NoResize              |
-        ImGuiWindowFlags_NoMove                |
-        ImGuiWindowFlags_NoBringToFrontOnFocus |
-        ImGuiWindowFlags_NoScrollbar           |
-        ImGuiWindowFlags_NoScrollWithMouse);
+    if (app.mini_panning) {
+        app.mini_cx = app.mini_pan_start_cx - (io.MousePos.x - app.mini_pan_start_mouse.x) * map_scale;
+        app.mini_cy = app.mini_pan_start_cy - (io.MousePos.y - app.mini_pan_start_mouse.y) * map_scale;
+    }
 
+    // Mouse wheel zoom on minimap (centered on cursor)
+    if (map_hovered && io.MouseWheel != 0.0f) {
+        const float  mx     = io.MousePos.x - map_tl.x;
+        const float  my     = io.MousePos.y - map_tl.y;
+        const double cur_re = app.mini_cx + (mx - map_w * 0.5f) * map_scale;
+        const double cur_im = app.mini_cy + (my - map_h * 0.5f) * map_scale;
+        const double factor = (io.MouseWheel > 0.0f) ? 1.25 : (1.0 / 1.25);
+        app.mini_vw /= factor;
+        const double ns = app.mini_vw / map_w;
+        app.mini_cx = cur_re - (mx - map_w * 0.5f) * ns;
+        app.mini_cy = cur_im - (my - map_h * 0.5f) * ns;
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Escape-time tab content
+// ---------------------------------------------------------------------------
+static void draw_escape_time_tab(AppState& app, const ImGuiIO& io)
+{
     // --- Formula selector ---
     ImGui::TextDisabled("FORMULA");
     ImGui::Separator();
@@ -83,20 +107,6 @@ void draw_side_panel(AppState& app, const ImGuiIO& io, float menu_h, float fh)
             app.dirty = true;
     }
 
-    // --- Iteration count ---
-    ImGui::Spacing();
-    ImGui::TextDisabled("ITERATIONS");
-    ImGui::Separator();
-    {
-        int iter = app.vs.max_iter;
-        ImGui::SetNextItemWidth(-1.0f);
-        if (ImGui::SliderInt("##iter", &iter, 64, 8192, "%d",
-                             ImGuiSliderFlags_Logarithmic)) {
-            app.vs.max_iter = iter;
-            app.dirty = true;
-        }
-    }
-
     // --- Color mode ---
     ImGui::Spacing();
     ImGui::TextDisabled("COLOR MODE");
@@ -137,12 +147,10 @@ void draw_side_panel(AppState& app, const ImGuiIO& io, float menu_h, float fh)
     ImGui::TextDisabled("JULIA PARAMETER");
     ImGui::Separator();
 
-    // Mini map dimensions: square, covers -2..2 on both axes
     const float map_w     = ImGui::GetContentRegionAvail().x;
-    const float map_h     = map_w;   // square: same range on both axes
+    const float map_h     = map_w;
     const int   map_iw    = static_cast<int>(map_w);
     const int   map_ih    = static_cast<int>(map_h);
-    // Complex units per display pixel in the mini map
     const float map_scale = static_cast<float>(app.mini_vw) / map_w;
 
     // Re-render mini map when formula, exponent, or minimap view changes
@@ -167,14 +175,13 @@ void draw_side_panel(AppState& app, const ImGuiIO& io, float menu_h, float fh)
         mini_last_vw          = app.mini_vw;
     }
 
-    // Render mini map: Mandelbrot-mode of current formula, current mini view
     if (app.mini_dirty && map_iw > 0 && map_ih > 0) {
         ViewState mini_vs;
         mini_vs.center_x        = app.mini_cx;
         mini_vs.center_y        = app.mini_cy;
         mini_vs.view_width      = app.mini_vw;
         mini_vs.formula         = app.vs.formula;
-        mini_vs.julia_mode      = false;   // always Mandelbrot-mode (parameter space)
+        mini_vs.julia_mode      = false;
         mini_vs.max_iter        = 128;
         mini_vs.palette         = 7;
         mini_vs.multibrot_exp   = app.vs.multibrot_exp;
@@ -189,7 +196,6 @@ void draw_side_panel(AppState& app, const ImGuiIO& io, float menu_h, float fh)
     if (app.mini_tex.id) {
         const ImVec2 map_tl = ImGui::GetCursorScreenPos();
 
-        // Draw mini map
         ImGui::Image(app.mini_tex.imgui_id(), ImVec2(map_w, map_h));
         const bool map_hovered = ImGui::IsItemHovered();
 
@@ -220,42 +226,14 @@ void draw_side_panel(AppState& app, const ImGuiIO& io, float menu_h, float fh)
             app.dirty = true;
         }
 
-        // Right-click drag: pan minimap
-        if (map_hovered && ImGui::IsMouseClicked(ImGuiMouseButton_Right)) {
-            app.mini_panning        = true;
-            app.mini_pan_start_mouse = io.MousePos;
-            app.mini_pan_start_cx   = app.mini_cx;
-            app.mini_pan_start_cy   = app.mini_cy;
-        }
-        if (!ImGui::IsMouseDown(ImGuiMouseButton_Right))
-            app.mini_panning = false;
-
-        if (app.mini_panning) {
-            app.mini_cx = app.mini_pan_start_cx - (io.MousePos.x - app.mini_pan_start_mouse.x) * map_scale;
-            app.mini_cy = app.mini_pan_start_cy - (io.MousePos.y - app.mini_pan_start_mouse.y) * map_scale;
-        }
-
-        // Mouse wheel zoom on minimap (centered on cursor)
-        if (map_hovered && io.MouseWheel != 0.0f) {
-            const float  mx     = io.MousePos.x - map_tl.x;
-            const float  my     = io.MousePos.y - map_tl.y;
-            const double cur_re = app.mini_cx + (mx - map_w * 0.5f) * map_scale;
-            const double cur_im = app.mini_cy + (my - map_h * 0.5f) * map_scale;
-            const double factor = (io.MouseWheel > 0.0f) ? 1.25 : (1.0 / 1.25);
-            app.mini_vw /= factor;
-            const double ns = app.mini_vw / map_w;
-            app.mini_cx = cur_re - (mx - map_w * 0.5f) * ns;
-            app.mini_cy = cur_im - (my - map_h * 0.5f) * ns;
-        }
+        draw_minimap_nav(app, io, map_w, map_h, map_scale, map_tl, map_hovered);
     }
 
-    // Reset minimap view
     if (ImGui::Button("Reset##minimap", ImVec2(-1.0f, 0.0f))) {
         app.mini_cx = 0.0;  app.mini_cy = 0.0;  app.mini_vw = 4.0;
         app.mini_dirty = true;
     }
 
-    // re / im numeric inputs
     ImGui::Spacing();
     {
         double re = app.vs.julia_re;
@@ -279,6 +257,203 @@ void draw_side_panel(AppState& app, const ImGuiIO& io, float menu_h, float fh)
     }
     if (app.show_orbit)
         ImGui::TextDisabled("Ctrl+click to pick point");
+}
+
+// ---------------------------------------------------------------------------
+// Newton tab content
+// ---------------------------------------------------------------------------
+static void draw_newton_tab(AppState& app, const ImGuiIO& io)
+{
+    // --- Degree slider ---
+    ImGui::TextDisabled("DEGREE");
+    ImGui::Separator();
+    {
+        int deg = app.vs.newton_degree;
+        ImGui::SetNextItemWidth(-1.0f);
+        if (ImGui::SliderInt("##ndeg", &deg, 2, 8)) {
+            app.vs.newton_degree = deg;
+            newton_init_roots(app.vs);
+            app.dirty = true;
+            app.mini_dirty = true;
+        }
+    }
+
+    // --- Minimap showing Newton fractal with draggable roots ---
+    ImGui::Spacing();
+    ImGui::TextDisabled("ROOTS");
+    ImGui::Separator();
+
+    const float map_w     = ImGui::GetContentRegionAvail().x;
+    const float map_h     = map_w;
+    const int   map_iw    = static_cast<int>(map_w);
+    const int   map_ih    = static_cast<int>(map_h);
+    const float map_scale = static_cast<float>(app.mini_vw) / map_w;
+
+    // Re-render when coefficients or minimap view changes
+    static bool   newton_mini_last_dirty = true;
+    static double newton_mini_last_cx    = 0.0;
+    static double newton_mini_last_cy    = 0.0;
+    static double newton_mini_last_vw    = 4.0;
+    if (app.vs.newton_coeffs_dirty             ||
+        newton_mini_last_cx != app.mini_cx     ||
+        newton_mini_last_cy != app.mini_cy     ||
+        newton_mini_last_vw != app.mini_vw) {
+        app.mini_dirty         = true;
+        newton_mini_last_cx    = app.mini_cx;
+        newton_mini_last_cy    = app.mini_cy;
+        newton_mini_last_vw    = app.mini_vw;
+    }
+
+    // Ensure coefficients are up to date before rendering
+    if (app.vs.newton_coeffs_dirty)
+        newton_expand_roots(app.vs);
+
+    if (app.mini_dirty && map_iw > 0 && map_ih > 0) {
+        ViewState mini_vs;
+        mini_vs.mode            = FractalMode::Newton;
+        mini_vs.center_x        = app.mini_cx;
+        mini_vs.center_y        = app.mini_cy;
+        mini_vs.view_width      = app.mini_vw;
+        mini_vs.max_iter        = 128;
+        mini_vs.newton_degree   = app.vs.newton_degree;
+        for (int k = 0; k < 8; ++k) {
+            mini_vs.newton_roots_re[k]  = app.vs.newton_roots_re[k];
+            mini_vs.newton_roots_im[k]  = app.vs.newton_roots_im[k];
+        }
+        for (int k = 0; k < 9; ++k) {
+            mini_vs.newton_coeffs_re[k] = app.vs.newton_coeffs_re[k];
+            mini_vs.newton_coeffs_im[k] = app.vs.newton_coeffs_im[k];
+        }
+        mini_vs.newton_coeffs_dirty = false;
+        app.mini_pbuf.resize(map_iw, map_ih);
+        app.renderer.render(mini_vs, app.mini_pbuf);
+        app.mini_tex.ensure(map_iw, map_ih);
+        app.mini_tex.upload(app.mini_pbuf);
+        app.mini_dirty = false;
+    }
+
+    if (app.mini_tex.id) {
+        const ImVec2 map_tl = ImGui::GetCursorScreenPos();
+
+        ImGui::Image(app.mini_tex.imgui_id(), ImVec2(map_w, map_h));
+        const bool map_hovered = ImGui::IsItemHovered();
+
+        ImDrawList* dl = ImGui::GetWindowDrawList();
+
+        // Draw colored dots at each root position
+        for (int k = 0; k < app.vs.newton_degree; ++k) {
+            const float rx = map_tl.x
+                + static_cast<float>((app.vs.newton_roots_re[k] - app.mini_cx) / map_scale)
+                + map_w * 0.5f;
+            const float ry = map_tl.y
+                + static_cast<float>((app.vs.newton_roots_im[k] - app.mini_cy) / map_scale)
+                + map_h * 0.5f;
+            const uint32_t col = NEWTON_ROOT_COLORS[k & 7];
+            // Convert from our pixel format (0xAABBGGRR) to ImGui IM_COL32 (0xAABBGGRR) — same!
+            dl->AddCircleFilled(ImVec2(rx, ry), 5.0f, col);
+            dl->AddCircle(ImVec2(rx, ry), 6.5f, IM_COL32(255, 255, 255, 200), 0, 1.5f);
+        }
+
+        // Left-click near a root: start dragging
+        if (map_hovered && ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
+            const float mx = io.MousePos.x - map_tl.x;
+            const float my = io.MousePos.y - map_tl.y;
+            const float hit_radius = 8.0f;
+            app.newton_drag_root = -1;
+            for (int k = 0; k < app.vs.newton_degree; ++k) {
+                const float rx = static_cast<float>((app.vs.newton_roots_re[k] - app.mini_cx) / map_scale) + map_w * 0.5f;
+                const float ry = static_cast<float>((app.vs.newton_roots_im[k] - app.mini_cy) / map_scale) + map_h * 0.5f;
+                const float dx = mx - rx, dy = my - ry;
+                if (dx * dx + dy * dy < hit_radius * hit_radius) {
+                    app.newton_drag_root = k;
+                    break;
+                }
+            }
+        }
+        if (!ImGui::IsMouseDown(ImGuiMouseButton_Left))
+            app.newton_drag_root = -1;
+
+        // Drag root
+        if (app.newton_drag_root >= 0) {
+            const float mx = io.MousePos.x - map_tl.x;
+            const float my = io.MousePos.y - map_tl.y;
+            app.vs.newton_roots_re[app.newton_drag_root] =
+                app.mini_cx + static_cast<double>((mx - map_w * 0.5f) * map_scale);
+            app.vs.newton_roots_im[app.newton_drag_root] =
+                app.mini_cy + static_cast<double>((my - map_h * 0.5f) * map_scale);
+            app.vs.newton_coeffs_dirty = true;
+            app.dirty = true;
+            app.mini_dirty = true;
+        }
+
+        draw_minimap_nav(app, io, map_w, map_h, map_scale, map_tl, map_hovered);
+    }
+
+    // Reset button: roots to unit circle + reset minimap view
+    if (ImGui::Button("Reset##newton_minimap", ImVec2(-1.0f, 0.0f))) {
+        newton_init_roots(app.vs);
+        app.mini_cx = 0.0;  app.mini_cy = 0.0;  app.mini_vw = 4.0;
+        app.dirty = true;
+        app.mini_dirty = true;
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Side panel: mode tabs, iterations, minimap
+// ---------------------------------------------------------------------------
+void draw_side_panel(AppState& app, const ImGuiIO& io, float menu_h, float fh)
+{
+    static const float STATUS_HEIGHT = 24.0f;
+
+    ImGui::SetNextWindowPos(ImVec2(0.0f, menu_h));
+    ImGui::SetNextWindowSize(ImVec2(PANEL_WIDTH, fh - menu_h - STATUS_HEIGHT));
+    ImGui::Begin("##panel", nullptr,
+        ImGuiWindowFlags_NoTitleBar            |
+        ImGuiWindowFlags_NoResize              |
+        ImGuiWindowFlags_NoMove                |
+        ImGuiWindowFlags_NoBringToFrontOnFocus |
+        ImGuiWindowFlags_NoScrollbar           |
+        ImGuiWindowFlags_NoScrollWithMouse);
+
+    // Mode tabs
+    if (ImGui::BeginTabBar("##mode_tabs")) {
+        if (ImGui::BeginTabItem("Escape-Time")) {
+            if (app.vs.mode != FractalMode::EscapeTime) {
+                app.vs.mode = FractalMode::EscapeTime;
+                app.dirty = true;
+                app.mini_dirty = true;
+            }
+            draw_escape_time_tab(app, io);
+            ImGui::EndTabItem();
+        }
+        if (ImGui::BeginTabItem("Newton")) {
+            if (app.vs.mode != FractalMode::Newton) {
+                app.vs.mode = FractalMode::Newton;
+                // Initialize roots on first switch if needed
+                if (app.vs.newton_coeffs_dirty)
+                    newton_init_roots(app.vs);
+                app.dirty = true;
+                app.mini_dirty = true;
+            }
+            draw_newton_tab(app, io);
+            ImGui::EndTabItem();
+        }
+        ImGui::EndTabBar();
+    }
+
+    // --- Shared: Iteration count ---
+    ImGui::Spacing();
+    ImGui::TextDisabled("ITERATIONS");
+    ImGui::Separator();
+    {
+        int iter = app.vs.max_iter;
+        ImGui::SetNextItemWidth(-1.0f);
+        if (ImGui::SliderInt("##iter", &iter, 64, 8192, "%d",
+                             ImGuiSliderFlags_Logarithmic)) {
+            app.vs.max_iter = iter;
+            app.dirty = true;
+        }
+    }
 
     ImGui::End();  // ##panel
 }

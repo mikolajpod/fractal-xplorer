@@ -42,21 +42,24 @@ bash package.sh   # → fractal_xplorer-1.0-win64.zip
 
 ```
 User input
-  → ViewState (center_x/y, view_width, max_iter, formula, julia_mode, julia_re/im,
-               palette, pal_offset, multibrot_exp, multibrot_exp_f, color_mode)
+  → ViewState (mode, center_x/y, view_width, max_iter, formula, julia_mode, julia_re/im,
+               palette, pal_offset, multibrot_exp, multibrot_exp_f, color_mode,
+               newton_degree, newton_roots_re/im, newton_coeffs_re/im)
   → CpuRenderer::render(vs, PixelBuffer)          [tile pool + AVX or scalar kernel]
-  → palette_color() or lyapunov_color()            [1024-entry LUT lookup]
+  → palette_color() / lyapunov_color()             [escape-time: 1024-entry LUT lookup]
+  → newton_color()                                 [Newton: root index → hue + brightness]
   → PixelBuffer (uint32_t RGBA pixels)
   → glTexSubImage2D → GLuint texture
   → ImGui::Image()                                [displayed in ##render window]
 ```
 
 Re-render is triggered by setting `dirty = true`. The mini map is re-rendered
-whenever `formula`, `multibrot_exp`, `multibrot_exp_f`, `mini_cx`, `mini_cy`,
-or `mini_vw` changes; it always renders in Mandelbrot mode (`julia_mode=false`)
-of the current formula. The mini map has its own navigable viewport (`mini_cx/cy/vw`)
-with left-drag to pick *c*, right-drag to pan, scroll-wheel to zoom, and a Reset
-button that restores the default −2…2 view.
+whenever relevant parameters change; in Escape-Time mode it always renders in
+Mandelbrot mode (`julia_mode=false`) of the current formula; in Newton mode it
+renders the Newton fractal with current roots. The mini map has its own navigable
+viewport (`mini_cx/cy/vw`) with right-drag to pan, scroll-wheel to zoom, and a
+Reset button. In Escape-Time mode, left-drag picks *c*; in Newton mode, left-drag
+near a root dot drags that root.
 
 ---
 
@@ -82,18 +85,21 @@ Do not change this layout without updating all three output paths.
 
 | File | Role |
 |---|---|
-| `view_state.hpp` | `FormulaType` enum + `ColorMode` enum + `ViewState` struct + `zoom_display()` + `fractal_name()` + `reset_view_keep_params()` |
+| `view_state.hpp` | `FractalMode` + `FormulaType` + `ColorMode` enums, `ViewState` struct, `zoom_display()`, `fractal_name()`, `reset_view_keep_params()`, `newton_init_roots()`, `newton_expand_roots()` |
 | `renderer.hpp` | `IFractalRenderer` interface, `PixelBuffer` |
 | `fractal.hpp` | Scalar iteration kernels — 3 templates (`scalar_kernel`, `scalar_multibrot_kernel`, `scalar_multibrot_slow_kernel`) + thin named wrappers; `scalar_lyapunov_iter`; `compute_orbit` |
-| `cpu_renderer_avx.hpp` | Declarations for AVX entry points |
-| `cpu_renderer_avx.cpp` | AVX+SLEEF kernels — compiled with `-O2 -mavx` |
+| `newton.hpp` | Scalar Newton kernel: `horner_eval()`, `newton_iter()` |
+| `cpu_renderer_avx.hpp` | Declarations for AVX escape-time entry points |
+| `cpu_renderer_avx.cpp` | AVX+SLEEF escape-time kernels — compiled with `-O2 -mavx` |
+| `newton_avx.hpp` | Declaration for `avx_newton_4()` |
+| `newton_avx.cpp` | AVX Newton kernel — compiled with `-O2 -mavx` (no SLEEF needed) |
 | `cpu_renderer.hpp/.cpp` | Thread pool tile dispatch, AVX runtime detection, `set_thread_count()` |
 | `thread_pool.hpp` | `std::thread` pool with condition-variable task queue |
-| `palette.hpp` | LUT declaration, `palette_color()` + `lyapunov_color()` inlines, constants |
+| `palette.hpp` | LUT declaration, `palette_color()` + `lyapunov_color()` + `newton_color()` inlines, `NEWTON_ROOT_COLORS[8]` |
 | `palette.cpp` | `init_palettes()` — 8 palettes built from color stops at startup |
 | `export.hpp/.cpp` | `export_png()`, `export_jxl()` (guarded by `HAVE_JXL`) |
 | `app_state.hpp` | `GlTex` GL texture helper + `AppState` struct (all mutable application state) |
-| `ui_panels.hpp/.cpp` | Side panel, export/benchmark/about dialogs — extracted from `main.cpp` |
+| `ui_panels.hpp/.cpp` | Side panel (TabBar: Escape-Time / Newton), export/benchmark/about dialogs |
 | `main.cpp` | App entry point: SDL/GL init, render loop, navigation input |
 | `cli_benchmark.hpp` | `run_cli_benchmark()` — CLI perf test, invoked via `--benchmark` flag |
 
@@ -101,10 +107,10 @@ Do not change this layout without updating all three output paths.
 
 ## Key Invariants
 
-**AVX separate translation unit** — `cpu_renderer_avx.cpp` is compiled with
-`-mavx` while everything else is not. This allows runtime detection via
-`__builtin_cpu_supports("avx")` with a scalar fallback. Never `#include` AVX
-intrinsic code from another file or move it into a header.
+**AVX separate translation units** — `cpu_renderer_avx.cpp` and `newton_avx.cpp`
+are compiled with `-mavx` while everything else is not. This allows runtime
+detection via `__builtin_cpu_supports("avx")` with a scalar fallback. Never
+`#include` AVX intrinsic code from another file or move it into a header.
 
 **`ImTextureID` cast** — must go through `uintptr_t`, not `intptr_t`:
 ```cpp
@@ -175,7 +181,38 @@ the fixed *c* parameter used when `julia_mode=true`.
 
 **Reset preserves user params** — `R` / View→Reset resets navigation
 (center, zoom) to the universal default; formula, julia_mode, Julia params, palette,
-pal_offset, multibrot exponents, and color_mode survive.
+pal_offset, multibrot exponents, color_mode, mode, and Newton root positions survive.
+
+**FractalMode** — `ViewState::mode` (`EscapeTime` or `Newton`) is the top-level
+discriminator. `render_tile()` checks mode first: Newton mode skips the entire
+escape-time formula dispatch and uses `newton_iter()` / `avx_newton_4()` instead.
+
+**Newton polynomial representation** — roots are stored as `newton_roots_re/im[8]`;
+the expanded polynomial coefficients (`coeffs[0..n-1]` for z^0 through z^(n-1),
+leading z^n = 1 implicit) are cached in `newton_coeffs_re/im[9]`. The
+`newton_coeffs_dirty` flag triggers recomputation via `newton_expand_roots()`.
+Always call `newton_expand_roots()` before rendering if dirty.
+
+**Newton coloring** — `newton_color(root, iters, max_iter)` maps root index to
+one of 8 fixed hues (`NEWTON_ROOT_COLORS`) and dims by iteration count (fast
+convergence = bright, slow = dim). Non-converging pixels are black.
+
+**Newton minimap** — renders the Newton fractal (not parameter space). Root
+positions are drawn as colored dots. Left-drag near a dot drags that root;
+right-drag pans; scroll zooms. The Reset button in Newton mode restores roots
+to the unit circle *and* resets minimap navigation.
+
+---
+
+## FractalMode Enum
+
+```cpp
+enum class FractalMode { EscapeTime = 0, Newton = 1 };
+```
+
+`EscapeTime` uses the escape-time formula dispatch (7 formula types × Julia mode).
+`Newton` uses Newton's method on a user-defined polynomial (degree 2–8 with
+draggable roots).
 
 ---
 
@@ -304,9 +341,9 @@ AVX-capable machines without needing old pre-AVX hardware):
 ./build/fractal_xplorer.exe --no-avx
 ```
 
-Single-threaded, 1920×1080, 256 iter, 16 test cases — all 8 formulas on both
-AVX and scalar paths. Reports Mpix/s — higher is better.
-Baseline is stored in `scalar_baseline.txt` (local, not committed).
+Single-threaded, 1920×1080, 256 iter, 20 test cases — all 8 escape-time formulas
+plus Newton degree 3 and 5, on both AVX and scalar paths. Reports Mpix/s — higher
+is better. Baseline is stored in `scalar_baseline.txt` (local, not committed).
 
 ---
 
@@ -315,13 +352,19 @@ Baseline is stored in `scalar_baseline.txt` (local, not committed).
 - **PATH conflict:** If `cc1.exe` loads DLLs from `C:/Program Files/Git/mingw64`
   instead of MSYS2, builds silently break. Fix: MSYS2 must precede Git in PATH.
 - **Linker permission denied:** The exe is still running. Close it before rebuilding.
-- **Mini map:** Re-renders whenever `formula`, `multibrot_exp`, `multibrot_exp_f`,
-  `mini_cx`, `mini_cy`, or `mini_vw` changes. Always renders in Mandelbrot mode
-  (`julia_mode=false`) of the current formula — so Burning Ship Julia shows the
-  Burning Ship parameter space, not Mandelbrot. Always max_iter 128, palette 7.
-  Left-drag updates `julia_re`/`julia_im` only. Right-drag pans (`mini_cx/cy`).
-  Scroll wheel zooms (`mini_vw`). Reset button restores `mini_cx=0, mini_cy=0,
-  mini_vw=4`. Panel has `NoScrollbar` to prevent oscillation from `map_w` changing.
+- **Mini map (Escape-Time):** Re-renders whenever `formula`, `multibrot_exp`,
+  `multibrot_exp_f`, `mini_cx`, `mini_cy`, or `mini_vw` changes. Always renders
+  in Mandelbrot mode (`julia_mode=false`) of the current formula — so Burning Ship
+  Julia shows the Burning Ship parameter space, not Mandelbrot. Always max_iter 128,
+  palette 7. Left-drag updates `julia_re`/`julia_im` only. Right-drag pans
+  (`mini_cx/cy`). Scroll wheel zooms (`mini_vw`). Reset button restores
+  `mini_cx=0, mini_cy=0, mini_vw=4`. Panel has `NoScrollbar` to prevent oscillation
+  from `map_w` changing.
+- **Mini map (Newton):** Re-renders whenever `newton_coeffs_dirty` or minimap view
+  changes. Renders Newton fractal with current roots. Colored dots overlay root
+  positions. Left-drag near a root dot (8px hit radius) drags it, updating
+  `newton_roots_re/im` and setting `newton_coeffs_dirty`. Right-drag pans, scroll
+  zooms. Reset button restores roots to unit circle and minimap to default view.
 - **Orbit:** `compute_orbit()` in `fractal.hpp` returns up to 20 z-trajectory
   points for any formula+julia_mode. Enabled by "Show orbit" checkbox; Ctrl+click
   in the render area picks the seed; drawn as dots (red seed, yellow rest) using

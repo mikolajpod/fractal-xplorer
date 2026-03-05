@@ -1,8 +1,8 @@
 # Fractal Xplorer
 
 A fast, no-nonsense fractal explorer for Windows.
-Renders Mandelbrot, Julia, Burning Ship, Mandelbar, and Multibrot/Multijulia fractals
-using AVX-vectorised, multithreaded arithmetic — no GPU required.
+Renders Mandelbrot, Julia, Burning Ship, Mandelbar, Multibrot/Multijulia, and
+Newton fractals using AVX-vectorised, multithreaded arithmetic — no GPU required.
 
 ![Fractal Xplorer screenshot](window.png)
 
@@ -20,7 +20,8 @@ using AVX-vectorised, multithreaded arithmetic — no GPU required.
 
 Extract the ZIP anywhere and double-click **fractal_xplorer.exe**.
 
-The app launches directly into a fully-rendered Mandelbrot set.
+The app launches directly into a fully-rendered Mandelbrot set. Switch to
+Newton fractals via the **Newton** tab in the side panel.
 Exports are saved to the folder the exe is in.
 
 ---
@@ -53,6 +54,11 @@ Exports are saved to the folder the exe is in.
 ---
 
 ## Side Panel
+
+The side panel has two tabs: **Escape-Time** (classic fractals) and **Newton**
+(Newton's method fractals). Shared controls (iterations slider) appear below the tabs.
+
+### Escape-Time Tab
 
 **Formula** — select the iteration formula (mouse wheel also cycles):
 
@@ -116,6 +122,30 @@ in the main fractal area. Up to 20 iteration steps are drawn as dots over the
 image: the seed point in red, subsequent points in yellow. The orbit updates
 instantly on every Ctrl+click; uncheck to hide it.
 
+### Newton Tab
+
+Newton fractals visualize the basins of attraction of Newton's root-finding
+method applied to a polynomial. Pixels are colored by *which* root they converge
+to, with brightness indicating convergence speed.
+
+**Degree** — slider 2–8. Changes the polynomial degree; roots are automatically
+placed evenly on the unit circle when the degree changes.
+
+**Roots (minimap)** — the minimap shows the Newton fractal for the current
+polynomial. Colored dots mark each root position.
+
+| Mini map action | Result |
+|---|---|
+| Left-click near a root dot | Start dragging that root |
+| Drag | Move the root; fractal updates in real time |
+| Right-click drag | Pan the mini map |
+| Mouse wheel | Zoom in / out (centered on cursor) |
+| **Reset** button | Restore roots to unit circle + reset minimap view |
+
+Dragging roots deforms the basins of attraction smoothly. The main render area
+shows the same Newton fractal and supports all standard navigation (pan, zoom,
+zoom-box, keyboard shortcuts).
+
 ---
 
 ## Threads
@@ -178,6 +208,21 @@ Typical render times at 1080p, 256 iterations on a mid-range CPU:
 | Scalar + 16 threads | ~300–500 ms |
 
 The status bar shows the last render time, active path, and thread count.
+
+### Single-Threaded Benchmark (1920×1080, 256 iter)
+
+| Formula | AVX (Mpix/s) | Scalar (Mpix/s) |
+|---|---|---|
+| Mandelbrot | 8.88 | 3.65 |
+| Julia | 9.05 | 4.18 |
+| Burning Ship | 8.58 | 3.32 |
+| Celtic | 9.19 | 3.57 |
+| Buffalo | 7.28 | 2.71 |
+| Mandelbar (n=2) | 14.98 | 5.77 |
+| Multibrot (n=3) | 7.31 | 1.94 |
+| Multibrot (r=3.5) | 0.51 | 0.10 |
+| Newton (deg 3) | 16.56 | 5.39 |
+| Newton (deg 5) | 8.41 | 2.67 |
 
 ---
 

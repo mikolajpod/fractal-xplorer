@@ -1,6 +1,8 @@
 #include "cpu_renderer.hpp"
 #include "fractal.hpp"
 #include "cpu_renderer_avx.hpp"
+#include "newton.hpp"
+#include "newton_avx.hpp"
 #include "palette.hpp"
 
 #include <algorithm>
@@ -40,6 +42,40 @@ void CpuRenderer::render_tile(const ViewState& vs, PixelBuffer& buf,
     const double scale = vs.view_width / W;
     const double x0    = vs.center_x - W * 0.5 * scale;
     const double y0    = vs.center_y - H * 0.5 * scale;
+
+    // ---- Newton mode ----
+    if (vs.mode == FractalMode::Newton) {
+        for (int py = ty; py < ty + th && py < H; ++py) {
+            const double im  = y0 + py * scale;
+            uint32_t*    row = buf.pixels.data() + py * W;
+            int          px  = tx;
+            const int    end = std::min(tx + tw, W);
+
+            // AVX path: 4 pixels at a time
+            if (use_avx) {
+                for (; px + 4 <= end; px += 4) {
+                    const double re0 = x0 + px * scale;
+                    int root4[4], iter4[4];
+                    avx_newton_4(re0, scale, im, vs.max_iter, vs.newton_degree,
+                                 vs.newton_coeffs_re, vs.newton_coeffs_im,
+                                 vs.newton_roots_re, vs.newton_roots_im,
+                                 root4, iter4);
+                    for (int k = 0; k < 4; ++k)
+                        row[px + k] = newton_color(root4[k], iter4[k], vs.max_iter);
+                }
+            }
+
+            // Scalar remainder (or full row if no AVX)
+            for (; px < end; ++px) {
+                const double re = x0 + px * scale;
+                NewtonResult nr = newton_iter(re, im, vs);
+                row[px] = newton_color(nr.root, nr.iters, vs.max_iter);
+            }
+        }
+        return;
+    }
+
+    // ---- Escape-time mode ----
 
     // For MultiSlow: if float exponent is effectively an integer, promote to
     // the fast integer path (AVX repeated-multiply, no trig).

@@ -41,6 +41,7 @@ add_executable(fractal_xplorer
     src/ui_panels.cpp
     src/cpu_renderer.cpp
     src/cpu_renderer_avx.cpp
+    src/newton_avx.cpp
     src/palette.cpp
     src/export.cpp
     ${IMGUI_SOURCES}
@@ -72,8 +73,11 @@ endif()
 # General optimisation for all sources
 target_compile_options(fractal_xplorer PRIVATE -O2)
 
-# AVX only for the file that actually uses intrinsics
+# AVX only for the files that actually use intrinsics
 set_source_files_properties(src/cpu_renderer_avx.cpp PROPERTIES
+    COMPILE_OPTIONS "-O2;-mavx"
+)
+set_source_files_properties(src/newton_avx.cpp PROPERTIES
     COMPILE_OPTIONS "-O2;-mavx"
 )
 

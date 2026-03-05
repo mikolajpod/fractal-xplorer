@@ -76,6 +76,9 @@ struct AppState {
     double orbit_re      = 0.0;
     double orbit_im      = 0.0;
 
+    // Newton minimap root dragging
+    int newton_drag_root = -1;  // index of root being dragged (-1 = none)
+
     // Mini Mandelbrot map
     PixelBuffer mini_pbuf;
     bool        mini_dirty    = true;

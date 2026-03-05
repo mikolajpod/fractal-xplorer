@@ -25,6 +25,34 @@ inline uint32_t palette_color(double smooth, int max_iter, int palette, int pal_
     return g_palette_lut[palette][idx];
 }
 
+// Newton fractal root colors — 8 distinct hues, fully opaque.
+// Layout: 0xAABBGGRR (little-endian memory: R, G, B, A)
+static constexpr uint32_t NEWTON_ROOT_COLORS[8] = {
+    0xFF0000FF,  // red
+    0xFF00CC00,  // green
+    0xFFFF6600,  // blue
+    0xFF00FFFF,  // yellow
+    0xFFFF00FF,  // magenta
+    0xFFFFFF00,  // cyan
+    0xFF0088FF,  // orange
+    0xFF00FF88,  // lime
+};
+
+// Map a Newton result to a 32-bit RGBA pixel.
+// root < 0 -> black (no convergence). Otherwise: base color dimmed by iteration count.
+inline uint32_t newton_color(int root, int iters, int max_iter)
+{
+    if (root < 0) return 0xFF000000u;
+    const uint32_t base = NEWTON_ROOT_COLORS[root & 7];
+    const double brightness = 1.0 - 0.6 * (static_cast<double>(iters) / max_iter);
+    const uint8_t r = static_cast<uint8_t>((base & 0xFF)       * brightness);
+    const uint8_t g = static_cast<uint8_t>(((base >> 8) & 0xFF) * brightness);
+    const uint8_t b = static_cast<uint8_t>(((base >> 16) & 0xFF) * brightness);
+    return 0xFF000000u | (static_cast<uint32_t>(b) << 16)
+                       | (static_cast<uint32_t>(g) << 8)
+                       | static_cast<uint32_t>(r);
+}
+
 // Map a Lyapunov exponent to a 32-bit RGBA pixel.
 static constexpr double LYAP_SCALE = 200.0;
 

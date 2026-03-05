@@ -2,6 +2,7 @@
 
 #include "cpu_renderer.hpp"
 #include "palette.hpp"
+#include "view_state.hpp"
 #include <cstdio>
 #include <algorithm>
 #include <vector>
@@ -24,27 +25,33 @@ inline int run_cli_benchmark()
         int         exp_i;
         double      exp_f;
         bool        force_scalar;
+        FractalMode mode;
+        int         newton_deg;
     };
 
     const TestCase tests[] = {
         // AVX path
-        {"Mandelbrot",              FormulaType::Standard,    false, 2, 2.0, false},
-        {"Julia",                   FormulaType::Standard,    true,  2, 2.0, false},
-        {"Burning Ship",            FormulaType::BurningShip, false, 2, 2.0, false},
-        {"Celtic",                  FormulaType::Celtic,      false, 2, 2.0, false},
-        {"Buffalo",                 FormulaType::Buffalo,     false, 2, 2.0, false},
-        {"Mandelbar (n=2)",         FormulaType::Mandelbar,   false, 2, 2.0, false},
-        {"Multibrot (n=3)",         FormulaType::MultiFast,   false, 3, 3.0, false},
-        {"Multibrot (r=3.5, slow)", FormulaType::MultiSlow,   false, 2, 3.5, false},
+        {"Mandelbrot",              FormulaType::Standard,    false, 2, 2.0, false, FractalMode::EscapeTime, 0},
+        {"Julia",                   FormulaType::Standard,    true,  2, 2.0, false, FractalMode::EscapeTime, 0},
+        {"Burning Ship",            FormulaType::BurningShip, false, 2, 2.0, false, FractalMode::EscapeTime, 0},
+        {"Celtic",                  FormulaType::Celtic,      false, 2, 2.0, false, FractalMode::EscapeTime, 0},
+        {"Buffalo",                 FormulaType::Buffalo,     false, 2, 2.0, false, FractalMode::EscapeTime, 0},
+        {"Mandelbar (n=2)",         FormulaType::Mandelbar,   false, 2, 2.0, false, FractalMode::EscapeTime, 0},
+        {"Multibrot (n=3)",         FormulaType::MultiFast,   false, 3, 3.0, false, FractalMode::EscapeTime, 0},
+        {"Multibrot (r=3.5, slow)", FormulaType::MultiSlow,   false, 2, 3.5, false, FractalMode::EscapeTime, 0},
+        {"Newton (deg 3)",          FormulaType::Standard,    false, 2, 2.0, false, FractalMode::Newton, 3},
+        {"Newton (deg 5)",          FormulaType::Standard,    false, 2, 2.0, false, FractalMode::Newton, 5},
         // Scalar path
-        {"Mandelbrot",              FormulaType::Standard,    false, 2, 2.0, true },
-        {"Julia",                   FormulaType::Standard,    true,  2, 2.0, true },
-        {"Burning Ship",            FormulaType::BurningShip, false, 2, 2.0, true },
-        {"Celtic",                  FormulaType::Celtic,      false, 2, 2.0, true },
-        {"Buffalo",                 FormulaType::Buffalo,     false, 2, 2.0, true },
-        {"Mandelbar (n=2)",         FormulaType::Mandelbar,   false, 2, 2.0, true },
-        {"Multibrot (n=3)",         FormulaType::MultiFast,   false, 3, 3.0, true },
-        {"Multibrot (r=3.5, slow)", FormulaType::MultiSlow,   false, 2, 3.5, true },
+        {"Mandelbrot",              FormulaType::Standard,    false, 2, 2.0, true,  FractalMode::EscapeTime, 0},
+        {"Julia",                   FormulaType::Standard,    true,  2, 2.0, true,  FractalMode::EscapeTime, 0},
+        {"Burning Ship",            FormulaType::BurningShip, false, 2, 2.0, true,  FractalMode::EscapeTime, 0},
+        {"Celtic",                  FormulaType::Celtic,      false, 2, 2.0, true,  FractalMode::EscapeTime, 0},
+        {"Buffalo",                 FormulaType::Buffalo,     false, 2, 2.0, true,  FractalMode::EscapeTime, 0},
+        {"Mandelbar (n=2)",         FormulaType::Mandelbar,   false, 2, 2.0, true,  FractalMode::EscapeTime, 0},
+        {"Multibrot (n=3)",         FormulaType::MultiFast,   false, 3, 3.0, true,  FractalMode::EscapeTime, 0},
+        {"Multibrot (r=3.5, slow)", FormulaType::MultiSlow,   false, 2, 3.5, true,  FractalMode::EscapeTime, 0},
+        {"Newton (deg 3)",          FormulaType::Standard,    false, 2, 2.0, true,  FractalMode::Newton, 3},
+        {"Newton (deg 5)",          FormulaType::Standard,    false, 2, 2.0, true,  FractalMode::Newton, 5},
     };
 
     printf("Fractal Xplorer CLI Benchmark\n");
@@ -67,6 +74,14 @@ inline int run_cli_benchmark()
         vs.julia_im        =  0.27015;
         vs.multibrot_exp   =  t.exp_i;
         vs.multibrot_exp_f =  t.exp_f;
+        vs.mode            =  t.mode;
+        if (t.mode == FractalMode::Newton) {
+            vs.newton_degree = t.newton_deg;
+            vs.center_x = 0.0;
+            vs.view_width = 4.0;
+            newton_init_roots(vs);
+            newton_expand_roots(vs);
+        }
 
         if (t.force_scalar)
             renderer.set_avx(false);

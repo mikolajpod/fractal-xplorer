@@ -117,6 +117,10 @@ int main(int argc, char* argv[])
         app.last_irw = irw;
         app.last_irh = irh;
 
+        // Ensure Newton coefficients are up to date before rendering
+        if (app.vs.newton_coeffs_dirty && app.vs.mode == FractalMode::Newton)
+            newton_expand_roots(app.vs);
+
         // Main fractal render
         if (app.dirty || irw != app.pbuf.width || irh != app.pbuf.height) {
             if (irw > 0 && irh > 0) {
@@ -270,7 +274,8 @@ int main(int argc, char* argv[])
         }
 
         // Ctrl+click: pick orbit seed (checked before pan so Ctrl suppresses pan)
-        if (app.show_orbit && render_hovered &&
+        // Orbit is not available in Newton mode
+        if (app.show_orbit && app.vs.mode != FractalMode::Newton && render_hovered &&
             ImGui::IsMouseClicked(ImGuiMouseButton_Left) && io.KeyCtrl) {
             const double scale = app.vs.view_width / irw;
             app.orbit_re     = app.vs.center_x + (io.MousePos.x - render_x - irw * 0.5) * scale;
@@ -331,8 +336,8 @@ int main(int argc, char* argv[])
             }
         }
 
-        // Orbit overlay
-        if (app.show_orbit && app.orbit_active) {
+        // Orbit overlay (not available in Newton mode)
+        if (app.show_orbit && app.orbit_active && app.vs.mode != FractalMode::Newton) {
             auto pts = compute_orbit(app.orbit_re, app.orbit_im, app.vs, 20);
             const double scale = app.vs.view_width / irw;
             auto to_screen = [&](double r, double i) -> ImVec2 {
