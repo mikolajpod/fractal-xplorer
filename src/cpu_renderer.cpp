@@ -61,10 +61,16 @@ void CpuRenderer::render_tile(const ViewState& vs, PixelBuffer& buf,
                     const double re0 = x0 + px * scale;
                     int root4[4];
                     double smooth4[4];
-                    avx_newton_4(re0, scale, im, vs.max_iter, vs.newton_degree,
-                                 vs.newton_coeffs_re, vs.newton_coeffs_im,
-                                 vs.newton_roots_re, vs.newton_roots_im,
-                                 root4, smooth4);
+                    if (newton_smooth)
+                        avx_newton_smooth_4(re0, scale, im, vs.max_iter, vs.newton_degree,
+                                     vs.newton_coeffs_re, vs.newton_coeffs_im,
+                                     vs.newton_roots_re, vs.newton_roots_im,
+                                     root4, smooth4);
+                    else
+                        avx_newton_4(re0, scale, im, vs.max_iter, vs.newton_degree,
+                                     vs.newton_coeffs_re, vs.newton_coeffs_im,
+                                     vs.newton_roots_re, vs.newton_roots_im,
+                                     root4, smooth4);
                     if (newton_smooth) {
                         for (int k = 0; k < 4; ++k) {
                             if (root4[k] < 0) {
@@ -87,8 +93,8 @@ void CpuRenderer::render_tile(const ViewState& vs, PixelBuffer& buf,
             // Scalar remainder (or full row if no AVX)
             for (; px < end; ++px) {
                 const double re = x0 + px * scale;
-                NewtonResult nr = newton_iter(re, im, vs);
                 if (newton_smooth) {
+                    NewtonResult nr = newton_iter<true>(re, im, vs);
                     if (nr.root < 0) {
                         row[px] = 0xFF000000u;
                     } else {
@@ -98,6 +104,7 @@ void CpuRenderer::render_tile(const ViewState& vs, PixelBuffer& buf,
                                                 vs.palette, vs.pal_offset);
                     }
                 } else {
+                    NewtonResult nr = newton_iter<false>(re, im, vs);
                     row[px] = newton_color(nr.root,
                                   static_cast<int>(nr.smooth), vs.max_iter);
                 }

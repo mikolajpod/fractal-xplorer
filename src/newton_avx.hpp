@@ -10,8 +10,16 @@
 // roots_re/im:  root positions [0..degree-1]
 // root4:     output — which root each pixel converged to (-1 = none)
 // smooth4:   output — smooth iteration count at convergence
+// Flat coloring: returns integer iteration count in smooth4 (no log computation)
 void avx_newton_4(double re0, double scale, double im,
                   int max_iter, int degree,
                   const double* coeffs_re, const double* coeffs_im,
                   const double* roots_re, const double* roots_im,
                   int* root4, double* smooth4);
+
+// Smooth coloring: returns smooth iteration count with fractional log-based correction
+void avx_newton_smooth_4(double re0, double scale, double im,
+                          int max_iter, int degree,
+                          const double* coeffs_re, const double* coeffs_im,
+                          const double* roots_re, const double* roots_im,
+                          int* root4, double* smooth4);

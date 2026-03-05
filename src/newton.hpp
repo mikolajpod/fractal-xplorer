@@ -30,7 +30,9 @@ inline void horner_eval(double zr, double zi, int degree,
 }
 
 // Newton iteration for a single pixel.
-// Returns which root the pixel converged to and how many iterations it took.
+// Returns which root the pixel converged to and smooth iteration count.
+// When compute_smooth=false, returns integer iteration count (no log).
+template <bool ComputeSmooth = true>
 inline NewtonResult newton_iter(double re, double im, const ViewState& vs)
 {
     const int degree = vs.newton_degree;
@@ -62,8 +64,12 @@ inline NewtonResult newton_iter(double re, double im, const ViewState& vs)
                 const double d2 = dx * dx + dy * dy;
                 if (d2 < best_dist) { best_dist = d2; best = r; }
             }
-            const double frac = std::log(1e-20) / std::log(step_mag2);
-            return {best, static_cast<double>(i) + frac};
+            if constexpr (ComputeSmooth) {
+                const double frac = std::log(1e-20) / std::log(step_mag2);
+                return {best, static_cast<double>(i) + frac};
+            } else {
+                return {best, static_cast<double>(i)};
+            }
         }
     }
     return {-1, static_cast<double>(vs.max_iter)};
