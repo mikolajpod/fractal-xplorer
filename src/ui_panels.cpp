@@ -278,6 +278,20 @@ static void draw_newton_tab(AppState& app, const ImGuiIO& io)
         }
     }
 
+    // --- Color mode ---
+    ImGui::Spacing();
+    ImGui::TextDisabled("COLOR MODE");
+    ImGui::Separator();
+    {
+        static const char* newton_mode_names[] = { "Flat", "Smooth" };
+        int cm = std::min(app.vs.color_mode, 1);
+        ImGui::SetNextItemWidth(-1.0f);
+        if (ImGui::Combo("##newton_colormode", &cm, newton_mode_names, 2)) {
+            app.vs.color_mode = cm;
+            app.dirty = true;
+        }
+    }
+
     // --- Minimap showing Newton fractal with draggable roots ---
     ImGui::Spacing();
     ImGui::TextDisabled("ROOTS");

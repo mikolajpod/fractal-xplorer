@@ -47,7 +47,7 @@ User input
                newton_degree, newton_roots_re/im, newton_coeffs_re/im)
   → CpuRenderer::render(vs, PixelBuffer)          [tile pool + AVX or scalar kernel]
   → palette_color() / lyapunov_color()             [escape-time: 1024-entry LUT lookup]
-  → newton_color()                                 [Newton: root index → hue + brightness]
+  → newton_color() / palette_color()               [Newton: flat=root hue, smooth=palette bands]
   → PixelBuffer (uint32_t RGBA pixels)
   → glTexSubImage2D → GLuint texture
   → ImGui::Image()                                [displayed in ##render window]
@@ -88,11 +88,11 @@ Do not change this layout without updating all three output paths.
 | `view_state.hpp` | `FractalMode` + `FormulaType` + `ColorMode` enums, `ViewState` struct, `zoom_display()`, `fractal_name()`, `reset_view_keep_params()`, `newton_init_roots()`, `newton_expand_roots()` |
 | `renderer.hpp` | `IFractalRenderer` interface, `PixelBuffer` |
 | `escape_time.hpp` | Scalar iteration kernels — 3 templates (`scalar_kernel`, `scalar_multibrot_kernel`, `scalar_multibrot_slow_kernel`) + thin named wrappers; `scalar_lyapunov_iter`; `compute_orbit` |
-| `newton.hpp` | Scalar Newton kernel: `horner_eval()`, `newton_iter()` |
+| `newton.hpp` | `NewtonResult` (root + smooth), scalar Newton kernel: `horner_eval()`, `newton_iter()` |
 | `escape_time_avx.hpp` | Declarations for AVX escape-time entry points |
 | `escape_time_avx.cpp` | AVX+SLEEF escape-time kernels — compiled with `-O2 -mavx` |
 | `newton_avx.hpp` | Declaration for `avx_newton_4()` |
-| `newton_avx.cpp` | AVX Newton kernel — compiled with `-O2 -mavx` (no SLEEF needed) |
+| `newton_avx.cpp` | AVX Newton kernel with smooth output — compiled with `-O2 -mavx` (no SLEEF needed) |
 | `cpu_renderer.hpp/.cpp` | Thread pool tile dispatch, AVX runtime detection, `set_thread_count()` |
 | `thread_pool.hpp` | `std::thread` pool with condition-variable task queue |
 | `palette.hpp` | LUT declaration, `palette_color()` + `lyapunov_color()` + `newton_color()` inlines, `NEWTON_ROOT_COLORS[8]` |
@@ -193,9 +193,14 @@ leading z^n = 1 implicit) are cached in `newton_coeffs_re/im[9]`. The
 `newton_coeffs_dirty` flag triggers recomputation via `newton_expand_roots()`.
 Always call `newton_expand_roots()` before rendering if dirty.
 
-**Newton coloring** — `newton_color(root, iters, max_iter)` maps root index to
-one of 8 fixed hues (`NEWTON_ROOT_COLORS`) and dims by iteration count (fast
-convergence = bright, slow = dim). Non-converging pixels are black.
+**Newton coloring** — two modes controlled by `color_mode`:
+- `color_mode == 0` (Flat): `newton_color(root, iters, max_iter)` maps root index
+  to one of 8 fixed hues (`NEWTON_ROOT_COLORS`) and dims by integer iteration count.
+- `color_mode >= 1` (Smooth): uses band encoding — `smooth = root * band_width +
+  min(smooth_iters, band_width - 1)` where `band_width = max_iter / degree` — then
+  feeds through `palette_color()`, giving full palette + offset cycling support.
+  Smooth iteration uses `frac = log(threshold) / log(step_mag2)`.
+Non-converging pixels are black in both modes.
 
 **Newton minimap** — renders the Newton fractal (not parameter space). Root
 positions are drawn as colored dots. Left-drag near a dot drags that root;
@@ -252,6 +257,9 @@ constexpr int COLOR_MODE_COUNT = 3;
 ```
 
 `ViewState::color_mode` (int, default 0) selects the coloring mode.
+In Escape-Time mode: 0 = smooth, 1 = Lyapunov interior, 2 = Lyapunov full.
+In Newton mode: 0 = flat (root hues), ≥1 = smooth (palette bands). The Newton
+tab UI clamps the value to 0–1; Lyapunov values don't apply to Newton.
 
 **Lyapunov exponent** λ = (1/N) Σ log|f'(z_k)|, where log|f'(z)| = log(n) +
 (n-1)/2 · log(|z|²). Mapped to palette via `lyapunov_color()` in `palette.hpp`

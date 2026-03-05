@@ -9,9 +9,9 @@
 // coeffs_re/im: polynomial coefficients [0..degree-1] (leading z^n = 1 implicit)
 // roots_re/im:  root positions [0..degree-1]
 // root4:     output — which root each pixel converged to (-1 = none)
-// iter4:     output — iteration count at convergence
+// smooth4:   output — smooth iteration count at convergence
 void avx_newton_4(double re0, double scale, double im,
                   int max_iter, int degree,
                   const double* coeffs_re, const double* coeffs_im,
                   const double* roots_re, const double* roots_im,
-                  int* root4, int* iter4);
+                  int* root4, double* smooth4);

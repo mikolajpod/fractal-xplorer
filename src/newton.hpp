@@ -3,7 +3,7 @@
 #include <cmath>
 #include "view_state.hpp"
 
-struct NewtonResult { int root; int iters; };
+struct NewtonResult { int root; double smooth; };
 
 // Evaluate p(z) and p'(z) via Horner's method.
 // Polynomial: z^n + coeffs[n-1]*z^(n-1) + ... + coeffs[1]*z + coeffs[0]
@@ -51,7 +51,8 @@ inline NewtonResult newton_iter(double re, double im, const ViewState& vs)
         zi -= step_im;
 
         // Check convergence
-        if (step_re * step_re + step_im * step_im < 1e-20) {
+        const double step_mag2 = step_re * step_re + step_im * step_im;
+        if (step_mag2 < 1e-20) {
             // Find nearest root
             int best = 0;
             double best_dist = 1e30;
@@ -61,8 +62,9 @@ inline NewtonResult newton_iter(double re, double im, const ViewState& vs)
                 const double d2 = dx * dx + dy * dy;
                 if (d2 < best_dist) { best_dist = d2; best = r; }
             }
-            return {best, i};
+            const double frac = std::log(1e-20) / std::log(step_mag2);
+            return {best, static_cast<double>(i) + frac};
         }
     }
-    return {-1, vs.max_iter};
+    return {-1, static_cast<double>(vs.max_iter)};
 }

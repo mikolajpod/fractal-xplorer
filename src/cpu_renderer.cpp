@@ -51,17 +51,36 @@ void CpuRenderer::render_tile(const ViewState& vs, PixelBuffer& buf,
             int          px  = tx;
             const int    end = std::min(tx + tw, W);
 
+            const bool newton_smooth = (vs.color_mode >= 1);
+            const double band_width = static_cast<double>(vs.max_iter)
+                                    / static_cast<double>(vs.newton_degree);
+
             // AVX path: 4 pixels at a time
             if (use_avx) {
                 for (; px + 4 <= end; px += 4) {
                     const double re0 = x0 + px * scale;
-                    int root4[4], iter4[4];
+                    int root4[4];
+                    double smooth4[4];
                     avx_newton_4(re0, scale, im, vs.max_iter, vs.newton_degree,
                                  vs.newton_coeffs_re, vs.newton_coeffs_im,
                                  vs.newton_roots_re, vs.newton_roots_im,
-                                 root4, iter4);
-                    for (int k = 0; k < 4; ++k)
-                        row[px + k] = newton_color(root4[k], iter4[k], vs.max_iter);
+                                 root4, smooth4);
+                    if (newton_smooth) {
+                        for (int k = 0; k < 4; ++k) {
+                            if (root4[k] < 0) {
+                                row[px + k] = 0xFF000000u;
+                            } else {
+                                const double ci = std::min(smooth4[k], band_width - 1.0);
+                                const double s  = root4[k] * band_width + ci;
+                                row[px + k] = palette_color(s, vs.max_iter,
+                                                            vs.palette, vs.pal_offset);
+                            }
+                        }
+                    } else {
+                        for (int k = 0; k < 4; ++k)
+                            row[px + k] = newton_color(root4[k],
+                                              static_cast<int>(smooth4[k]), vs.max_iter);
+                    }
                 }
             }
 
@@ -69,7 +88,19 @@ void CpuRenderer::render_tile(const ViewState& vs, PixelBuffer& buf,
             for (; px < end; ++px) {
                 const double re = x0 + px * scale;
                 NewtonResult nr = newton_iter(re, im, vs);
-                row[px] = newton_color(nr.root, nr.iters, vs.max_iter);
+                if (newton_smooth) {
+                    if (nr.root < 0) {
+                        row[px] = 0xFF000000u;
+                    } else {
+                        const double ci = std::min(nr.smooth, band_width - 1.0);
+                        const double s  = nr.root * band_width + ci;
+                        row[px] = palette_color(s, vs.max_iter,
+                                                vs.palette, vs.pal_offset);
+                    }
+                } else {
+                    row[px] = newton_color(nr.root,
+                                  static_cast<int>(nr.smooth), vs.max_iter);
+                }
             }
         }
         return;
