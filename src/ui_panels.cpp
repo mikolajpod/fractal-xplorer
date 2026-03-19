@@ -470,6 +470,25 @@ void draw_side_panel(AppState& app, const ImGuiIO& io, float menu_h, float fh)
         }
     }
 
+    // --- Shared: Navigation coordinates ---
+    ImGui::Spacing();
+    ImGui::TextDisabled("NAVIGATION");
+    ImGui::Separator();
+    {
+        const float input_w = PANEL_WIDTH - 60.0f;
+        ImGui::SetNextItemWidth(input_w);
+        if (ImGui::InputDouble("Re", &app.vs.center_x, 0.0, 0.0, "%.12g"))
+            app.dirty = true;
+        ImGui::SetNextItemWidth(input_w);
+        if (ImGui::InputDouble("Im", &app.vs.center_y, 0.0, 0.0, "%.12g"))
+            app.dirty = true;
+        ImGui::SetNextItemWidth(input_w);
+        if (ImGui::InputDouble("W", &app.vs.view_width, 0.0, 0.0, "%.6g")) {
+            if (app.vs.view_width < 1e-15) app.vs.view_width = 1e-15;
+            app.dirty = true;
+        }
+    }
+
     ImGui::End();  // ##panel
 }
 
