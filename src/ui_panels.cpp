@@ -68,6 +68,7 @@ static void draw_escape_time_tab(AppState& app, const ImGuiIO& io)
             "Mandelbar  (conj(z)^n + c)",
             "Multibrot  (z^n + c)",
             "Multibrot  (z^r + c, slow)",
+            "Collatz  ((2+7z-(2+5z)cos(pi*z))/4)",
         };
         int f = static_cast<int>(app.vs.formula);
         ImGui::SetNextItemWidth(-1.0f);

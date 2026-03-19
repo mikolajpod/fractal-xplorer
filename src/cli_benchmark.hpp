@@ -39,6 +39,7 @@ inline int run_cli_benchmark()
         {"Mandelbar (n=2)",         FormulaType::Mandelbar,   false, 2, 2.0, false, FractalMode::EscapeTime, 0},
         {"Multibrot (n=3)",         FormulaType::MultiFast,   false, 3, 3.0, false, FractalMode::EscapeTime, 0},
         {"Multibrot (r=3.5, slow)", FormulaType::MultiSlow,   false, 2, 3.5, false, FractalMode::EscapeTime, 0},
+        {"Collatz",                 FormulaType::Collatz,     false, 2, 2.0, false, FractalMode::EscapeTime, 0},
         {"Newton (deg 3)",          FormulaType::Standard,    false, 2, 2.0, false, FractalMode::Newton, 3},
         {"Newton (deg 5)",          FormulaType::Standard,    false, 2, 2.0, false, FractalMode::Newton, 5},
         // Scalar path
@@ -50,6 +51,7 @@ inline int run_cli_benchmark()
         {"Mandelbar (n=2)",         FormulaType::Mandelbar,   false, 2, 2.0, true,  FractalMode::EscapeTime, 0},
         {"Multibrot (n=3)",         FormulaType::MultiFast,   false, 3, 3.0, true,  FractalMode::EscapeTime, 0},
         {"Multibrot (r=3.5, slow)", FormulaType::MultiSlow,   false, 2, 3.5, true,  FractalMode::EscapeTime, 0},
+        {"Collatz",                 FormulaType::Collatz,     false, 2, 2.0, true,  FractalMode::EscapeTime, 0},
         {"Newton (deg 3)",          FormulaType::Standard,    false, 2, 2.0, true,  FractalMode::Newton, 3},
         {"Newton (deg 5)",          FormulaType::Standard,    false, 2, 2.0, true,  FractalMode::Newton, 5},
     };

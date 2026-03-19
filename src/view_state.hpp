@@ -14,8 +14,9 @@ enum class FormulaType {
     Mandelbar   = 4,  // conj(z)^n + c  (integer exp 2-8)
     MultiFast   = 5,  // z^n + c  (integer exp 2-8, AVX)
     MultiSlow   = 6,  // z^n + c  (real exp, scalar)
+    Collatz     = 7,  // (2+7z-(2+5z)cos(pi*z))/4  (complex Collatz map)
 };
-constexpr int FORMULA_COUNT = 7;
+constexpr int FORMULA_COUNT = 8;
 
 enum ColorMode {
     COLOR_SMOOTH            = 0,
@@ -79,6 +80,8 @@ inline const char* fractal_name(const ViewState& vs)
             return vs.julia_mode ? "Celtic Julia"       : "Celtic";
         case FormulaType::Buffalo:
             return vs.julia_mode ? "Buffalo Julia"      : "Buffalo";
+        case FormulaType::Collatz:
+            return "Collatz";
     }
     return "Unknown";
 }

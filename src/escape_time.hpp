@@ -104,6 +104,44 @@ inline double scalar_multibrot_slow_kernel(double re, double im, double cr, doub
     return static_cast<double>(max_iter);
 }
 
+// Collatz fractal: z -> (2 + 7z - (2+5z)*cos(pi*z)) / 4
+// No c parameter — z0 = pixel, julia_mode has no effect.
+// cos(pi*z) for complex z = (zr, zi):
+//   cos(pi*zr)*cosh(pi*zi) - i*sin(pi*zr)*sinh(pi*zi)
+static constexpr double COLLATZ_BAILOUT2 = 10000.0;
+
+inline double collatz_iter(double re, double im, int max_iter)
+{
+    double zr = re, zi = im;
+    const double pi = 3.14159265358979323846;
+    const double log2 = std::log(2.0);
+
+    for (int i = 0; i < max_iter; ++i) {
+        if (zr * zr + zi * zi > COLLATZ_BAILOUT2) {
+            const double log_zn = std::log(zr * zr + zi * zi) * 0.5;
+            const double nu = std::log(log_zn / log2) / log2;
+            return std::max(0.0, static_cast<double>(i) + 1.0 - nu);
+        }
+
+        // cos(pi * z) = cos(pi*zr)*cosh(pi*zi) - i*sin(pi*zr)*sinh(pi*zi)
+        const double pzr = pi * zr, pzi = pi * zi;
+        const double cos_r = std::cos(pzr), sin_r = std::sin(pzr);
+        const double cosh_i = std::cosh(pzi), sinh_i = std::sinh(pzi);
+        const double cw_re =  cos_r * cosh_i;
+        const double cw_im = -sin_r * sinh_i;
+
+        // (2 + 5z) * cos(pi*z)
+        const double a_re = 2.0 + 5.0 * zr, a_im = 5.0 * zi;
+        const double prod_re = a_re * cw_re - a_im * cw_im;
+        const double prod_im = a_re * cw_im + a_im * cw_re;
+
+        // f(z) = (2 + 7z - prod) / 4
+        zr = (2.0 + 7.0 * zr - prod_re) * 0.25;
+        zi = (      7.0 * zi - prod_im) * 0.25;
+    }
+    return static_cast<double>(max_iter);
+}
+
 // Named wrappers — thin one-liners; all call sites unchanged.
 inline double mandelbrot_iter(double re, double im, int max_iter)
     { return scalar_kernel<false,false,false>(re, im, 0, 0, max_iter); }
@@ -162,7 +200,11 @@ struct SmoothLyapunov { double smooth; double lambda; };
 inline SmoothLyapunov scalar_lyapunov_iter(double re, double im, const ViewState& vs)
 {
     double zr, zi, cr, ci;
-    if (vs.julia_mode) {
+    if (vs.formula == FormulaType::Collatz) {
+        // Collatz: z0 = pixel, no c parameter
+        zr = re; zi = im;
+        cr = 0.0; ci = 0.0;
+    } else if (vs.julia_mode) {
         zr = re; zi = im;
         cr = vs.julia_re; ci = vs.julia_im;
     } else {
@@ -197,7 +239,8 @@ inline SmoothLyapunov scalar_lyapunov_iter(double re, double im, const ViewState
             ++count;
         }
 
-        if (mag2 > 4.0) {
+        const double bailout2 = (vs.formula == FormulaType::Collatz) ? COLLATZ_BAILOUT2 : 4.0;
+        if (mag2 > bailout2) {
             // Smooth escape-time
             const double log_zn = std::log(mag2) * 0.5;
             const double nu     = std::log(log_zn / log_n) / log_n;
@@ -270,6 +313,20 @@ inline SmoothLyapunov scalar_lyapunov_iter(double re, double im, const ViewState
                     new_zr = r_n * std::cos(exp_n * theta) + cr;
                     new_zi = r_n * std::sin(exp_n * theta) + ci;
                 }
+                break;
+            }
+            case FormulaType::Collatz: {
+                const double pi = 3.14159265358979323846;
+                const double pzr = pi * zr, pzi = pi * zi;
+                const double cos_r = std::cos(pzr), sin_r = std::sin(pzr);
+                const double cosh_i = std::cosh(pzi), sinh_i = std::sinh(pzi);
+                const double cw_re =  cos_r * cosh_i;
+                const double cw_im = -sin_r * sinh_i;
+                const double a_re = 2.0 + 5.0 * zr, a_im = 5.0 * zi;
+                const double prod_re = a_re * cw_re - a_im * cw_im;
+                const double prod_im = a_re * cw_im + a_im * cw_re;
+                new_zr = (2.0 + 7.0 * zr - prod_re) * 0.25;
+                new_zi = (      7.0 * zi - prod_im) * 0.25;
                 break;
             }
             default:
@@ -375,6 +432,20 @@ compute_orbit(double re, double im, const ViewState& vs, int max_n = 20)
                 }
                 break;
             }
+            case FormulaType::Collatz: {
+                const double pi = 3.14159265358979323846;
+                const double pzr = pi * zr, pzi = pi * zi;
+                const double cos_r = std::cos(pzr), sin_r = std::sin(pzr);
+                const double cosh_i = std::cosh(pzi), sinh_i = std::sinh(pzi);
+                const double cw_re =  cos_r * cosh_i;
+                const double cw_im = -sin_r * sinh_i;
+                const double a_re = 2.0 + 5.0 * zr, a_im = 5.0 * zi;
+                const double prod_re = a_re * cw_re - a_im * cw_im;
+                const double prod_im = a_re * cw_im + a_im * cw_re;
+                new_zr = (2.0 + 7.0 * zr - prod_re) * 0.25;
+                new_zi = (      7.0 * zi - prod_im) * 0.25;
+                break;
+            }
             default:
                 new_zr = cr;
                 new_zi = ci;
@@ -384,7 +455,8 @@ compute_orbit(double re, double im, const ViewState& vs, int max_n = 20)
         zr = new_zr;
         zi = new_zi;
         pts.push_back({zr, zi});
-        if (zr*zr + zi*zi > 4.0) break;
+        const double orbit_bail = (vs.formula == FormulaType::Collatz) ? COLLATZ_BAILOUT2 : 4.0;
+        if (zr*zr + zi*zi > orbit_bail) break;
     }
 
     return pts;

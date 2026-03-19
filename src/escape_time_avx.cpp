@@ -460,6 +460,128 @@ void avx_buffalo_julia_4(double re0, double scale, double im,
 }
 
 // -----------------------------------------------------------------------
+// Collatz fractal: z -> (2 + 7z - (2+5z)*cos(pi*z)) / 4
+// z0 = pixel, no c parameter.
+// cos(pi*z) for complex z: cos(pi*zr)*cosh(pi*zi) - i*sin(pi*zr)*sinh(pi*zi)
+// cosh/sinh computed from exp: cosh(x) = (e^x + e^-x)/2, sinh(x) = (e^x - e^-x)/2
+// -----------------------------------------------------------------------
+template<bool ComputeLyapunov = false>
+static void avx_collatz_kernel(double re0, double scale, double im,
+                                int max_iter, double* out4,
+                                double* lyap_out4 = nullptr)
+{
+    __m256d zr = _mm256_set_pd(re0 + 3.0*scale, re0 + 2.0*scale,
+                                re0 +     scale,  re0);
+    __m256d zi = _mm256_set1_pd(im);
+
+    const __m256d bailout = _mm256_set1_pd(10000.0);
+    const __m256d one     = _mm256_set1_pd(1.0);
+    const __m256d two     = _mm256_set1_pd(2.0);
+    const __m256d five    = _mm256_set1_pd(5.0);
+    const __m256d seven   = _mm256_set1_pd(7.0);
+    const __m256d quarter = _mm256_set1_pd(0.25);
+    const __m256d half    = _mm256_set1_pd(0.5);
+    const __m256d pi_v    = _mm256_set1_pd(3.14159265358979323846);
+    const __m256d neg     = _mm256_set1_pd(-1.0);
+
+    __m256d active   = _mm256_castsi256_pd(_mm256_set1_epi64x(-1LL));
+    __m256d iters_d  = _mm256_setzero_pd();
+    __m256d final_r2 = _mm256_set1_pd(10000.0);
+
+    // Lyapunov accumulators (Collatz: use n=2 approximation for derivative)
+    __m256d log_deriv_sum, lyap_n_iters;
+    if constexpr (ComputeLyapunov) {
+        log_deriv_sum = _mm256_setzero_pd();
+        lyap_n_iters  = _mm256_setzero_pd();
+    }
+
+    for (int i = 0; i < max_iter; ++i) {
+        const __m256d mag2 = _mm256_add_pd(_mm256_mul_pd(zr, zr),
+                                            _mm256_mul_pd(zi, zi));
+
+        if constexpr (ComputeLyapunov) {
+            // Approximate: use log(n=2) + 0.5 * log(|z|^2)
+            __m256d safe_mag2 = _mm256_max_pd(mag2, _mm256_set1_pd(1e-300));
+            __m256d log_mag2  = Sleef_logd4_u35(safe_mag2);
+            __m256d log_deriv = _mm256_add_pd(_mm256_set1_pd(std::log(2.0)),
+                                              _mm256_mul_pd(half, log_mag2));
+            __m256d accum_mask = _mm256_and_pd(active,
+                _mm256_cmp_pd(mag2, _mm256_set1_pd(1e-200), _CMP_GT_OQ));
+            log_deriv_sum = _mm256_add_pd(log_deriv_sum, _mm256_and_pd(accum_mask, log_deriv));
+            lyap_n_iters  = _mm256_add_pd(lyap_n_iters,  _mm256_and_pd(accum_mask, one));
+        }
+
+        const __m256d just_esc = _mm256_and_pd(
+            _mm256_cmp_pd(mag2, bailout, _CMP_GT_OQ), active);
+        final_r2 = _mm256_blendv_pd(final_r2, mag2, just_esc);
+        active   = _mm256_andnot_pd(just_esc, active);
+
+        if (_mm256_movemask_pd(active) == 0) break;
+
+        // pi * z
+        __m256d pzr = _mm256_mul_pd(pi_v, zr);
+        __m256d pzi = _mm256_mul_pd(pi_v, zi);
+
+        // sin(pi*zr), cos(pi*zr) via SLEEF
+        Sleef___m256d_2 sc = Sleef_sincosd4_u10(pzr);
+        __m256d sin_r = sc.x;
+        __m256d cos_r = sc.y;
+
+        // cosh(pi*zi) = (exp(pi*zi) + exp(-pi*zi)) / 2
+        // sinh(pi*zi) = (exp(pi*zi) - exp(-pi*zi)) / 2
+        __m256d exp_pos = Sleef_expd4_u10(pzi);
+        __m256d exp_neg = Sleef_expd4_u10(_mm256_mul_pd(neg, pzi));
+        __m256d cosh_i  = _mm256_mul_pd(_mm256_add_pd(exp_pos, exp_neg), half);
+        __m256d sinh_i  = _mm256_mul_pd(_mm256_sub_pd(exp_pos, exp_neg), half);
+
+        // cos(pi*z) = cos_r*cosh_i - i*sin_r*sinh_i
+        __m256d cw_re = _mm256_mul_pd(cos_r, cosh_i);
+        __m256d cw_im = _mm256_mul_pd(_mm256_mul_pd(neg, sin_r), sinh_i);
+
+        // (2 + 5z) * cos(pi*z)
+        __m256d a_re = _mm256_add_pd(two, _mm256_mul_pd(five, zr));
+        __m256d a_im = _mm256_mul_pd(five, zi);
+        __m256d prod_re = _mm256_sub_pd(_mm256_mul_pd(a_re, cw_re),
+                                         _mm256_mul_pd(a_im, cw_im));
+        __m256d prod_im = _mm256_add_pd(_mm256_mul_pd(a_re, cw_im),
+                                         _mm256_mul_pd(a_im, cw_re));
+
+        // f(z) = (2 + 7z - prod) / 4
+        __m256d new_zr = _mm256_mul_pd(quarter,
+            _mm256_sub_pd(_mm256_add_pd(two, _mm256_mul_pd(seven, zr)), prod_re));
+        __m256d new_zi = _mm256_mul_pd(quarter,
+            _mm256_sub_pd(_mm256_mul_pd(seven, zi), prod_im));
+
+        zr = _mm256_blendv_pd(zr, new_zr, active);
+        zi = _mm256_blendv_pd(zi, new_zi, active);
+        iters_d = _mm256_add_pd(iters_d, _mm256_and_pd(active, one));
+    }
+
+    // Smooth coloring (use n=2 approximation)
+    const __m256d max_d_v  = _mm256_set1_pd(static_cast<double>(max_iter));
+    const __m256d inv_log2 = _mm256_set1_pd(1.0 / std::log(2.0));
+    const __m256d zero_v   = _mm256_setzero_pd();
+
+    __m256d log_zn = _mm256_mul_pd(Sleef_logd4_u35(final_r2), half);
+    __m256d nu     = _mm256_mul_pd(Sleef_logd4_u35(_mm256_mul_pd(log_zn, inv_log2)), inv_log2);
+    __m256d smooth = _mm256_max_pd(zero_v, _mm256_sub_pd(_mm256_add_pd(iters_d, one), nu));
+    __m256d result = _mm256_blendv_pd(smooth, max_d_v, active);
+    _mm256_storeu_pd(out4, result);
+
+    if constexpr (ComputeLyapunov) {
+        __m256d safe_n = _mm256_max_pd(lyap_n_iters, one);
+        __m256d lambda = _mm256_div_pd(log_deriv_sum, safe_n);
+        _mm256_storeu_pd(lyap_out4, lambda);
+    }
+}
+
+void avx_collatz_4(double re0, double scale, double im,
+                   int max_iter, double* out4)
+{
+    avx_collatz_kernel<false>(re0, scale, im, max_iter, out4);
+}
+
+// -----------------------------------------------------------------------
 // Lyapunov dispatch — computes both smooth and lambda for 4 pixels.
 // -----------------------------------------------------------------------
 void avx_lyapunov_4(FormulaType formula, bool julia_mode,
@@ -545,6 +667,9 @@ void avx_lyapunov_4(FormulaType formula, bool julia_mode,
                 else
                     avx_multibrot_slow_kernel<false,true>(re0,scale,im,max_iter,exp_f,0.0,0.0,smooth4,lyap4);
             }
+            break;
+        case FormulaType::Collatz:
+            avx_collatz_kernel<true>(re0,scale,im,max_iter,smooth4,lyap4);
             break;
         default:
             avx_kernel<false,false,false,false,false,true>(re0,scale,im,max_iter,0.0,0.0,smooth4,lyap4);

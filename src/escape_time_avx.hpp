@@ -65,6 +65,10 @@ void avx_multijulia_slow_4(double re0, double scale, double im,
                             int max_iter, double exp_n,
                             double julia_re, double julia_im, double* out4);
 
+// Collatz: (2+7z-(2+5z)*cos(pi*z))/4, z0=pixel, no c parameter
+void avx_collatz_4(double re0, double scale, double im,
+                   int max_iter, double* out4);
+
 // Lyapunov dispatch — computes both smooth and lambda for 4 pixels.
 // Covers all formula x julia_mode combinations internally.
 void avx_lyapunov_4(FormulaType formula, bool julia_mode,

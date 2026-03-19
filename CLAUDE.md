@@ -158,9 +158,10 @@ public wrappers are unchanged (`ComputeLyapunov=false`); Lyapunov instantiations
 are called only through `avx_lyapunov_4()`.
 
 `avx_lyapunov_4(formula, julia_mode, ...)` is a single dispatch function that
-covers all 14 formula × julia_mode combinations, routing to `<..., true>`
+covers all 15 formula × julia_mode combinations, routing to `<..., true>`
 template instantiations. It replicates the `slow_int_n` integer promotion logic
-for MultiSlow.
+for MultiSlow. Collatz has a Lyapunov template instantiation but `render_tile()`
+bypasses it — Collatz always uses smooth coloring (see ColorMode section).
 
 `n=2` for Standard dispatches to `avx_mandelbrot_4` / `avx_julia_4`;
 `n≥3` (integer) dispatches to `avx_multibrot_4` / `avx_multijulia_4`;
@@ -170,11 +171,12 @@ When `multibrot_exp_f` is an exact integer (detected by `slow_int_n` in `render_
 MultiSlow routes to the fast integer kernel instead of the polar-form kernel.
 
 **Formula + Julia mode** — `ViewState` has two orthogonal dimensions:
-- `FormulaType formula` — which iteration rule to apply (7 values)
+- `FormulaType formula` — which iteration rule to apply (8 values)
 - `bool julia_mode` — Mandelbrot mode (z₀=0, c=pixel) vs Julia mode (z₀=pixel, c=fixed)
 
-This gives 14 combinations without any enum explosion. `julia_re`/`julia_im` hold
-the fixed *c* parameter used when `julia_mode=true`.
+This gives 15 combinations without any enum explosion. `julia_re`/`julia_im` hold
+the fixed *c* parameter used when `julia_mode=true`. Collatz ignores `julia_mode`
+(always z₀=pixel, no *c* parameter).
 
 **Default viewport** — `ViewState{}` defaults to center (0, 0), view_width 4.0.
 `default_view_for(ft)` returns this for all formula types — no per-formula special cases.
@@ -202,6 +204,15 @@ Always call `newton_expand_roots()` before rendering if dirty.
   Smooth iteration uses `frac = log(threshold) / log(step_mag2)`.
 Non-converging pixels are black in both modes.
 
+**Collatz fractal** — `z → (2 + 7z - (2+5z)·cos(πz)) / 4` with z₀ = pixel.
+This is a smooth complex extension of the integer Collatz map (n/2 if even,
+3n+1 if odd). No *c* parameter — `julia_mode` is ignored. Uses `cos(πz)` for
+complex z, which involves cosh/sinh and causes exponential escape away from the
+real axis. The fractal structure is a thin strip along Re(z); most of the complex
+plane escapes in 1–2 iterations. Bailout is `|z|² > 10000` (vs 4 for other formulas).
+Lyapunov coloring is disabled (forced to smooth) because the standard derivative
+formula doesn't apply.
+
 **Newton minimap** — renders the Newton fractal (not parameter space). Root
 positions are drawn as colored dots. Left-drag near a dot drags that root;
 right-drag pans; scroll zooms. The Reset button in Newton mode restores roots
@@ -215,7 +226,7 @@ to the unit circle *and* resets minimap navigation.
 enum class FractalMode { EscapeTime = 0, Newton = 1 };
 ```
 
-`EscapeTime` uses the escape-time formula dispatch (7 formula types × Julia mode).
+`EscapeTime` uses the escape-time formula dispatch (8 formula types × Julia mode).
 `Newton` uses the Newton-Raphson method on a user-defined polynomial (degree 2–8
 with draggable roots).
 
@@ -232,11 +243,13 @@ enum class FormulaType {
     Mandelbar   = 4,  // conj(z)^n + c  (integer exp 2-8)
     MultiFast   = 5,  // z^n + c  (integer exp 2-8, AVX)
     MultiSlow   = 6,  // z^n + c  (real exp, AVX polar form via SLEEF)
+    Collatz     = 7,  // (2+7z-(2+5z)cos(pi*z))/4  (complex Collatz map)
 };
-constexpr int FORMULA_COUNT = 7;
+constexpr int FORMULA_COUNT = 8;
 ```
 
-Combined with `bool julia_mode` in `ViewState`, this gives 14 render combinations.
+Combined with `bool julia_mode` in `ViewState`, this gives 15 render combinations
+(14 for formulas 0–6 × julia_mode, plus Collatz which ignores julia_mode).
 
 `multibrot_exp` (int, 2–8) is the exponent for Mandelbar and MultiFast.
 `multibrot_exp_f` (double) is the exponent for MultiSlow; any real value is accepted.
@@ -260,6 +273,9 @@ constexpr int COLOR_MODE_COUNT = 3;
 In Escape-Time mode: 0 = smooth, 1 = Lyapunov interior, 2 = Lyapunov full.
 In Newton mode: 0 = flat (root hues), ≥1 = smooth (palette bands). The Newton
 tab UI clamps the value to 0–1; Lyapunov values don't apply to Newton.
+**Collatz exception:** Lyapunov modes are not applicable — the Lyapunov derivative
+formula assumes z^n growth which doesn't match Collatz. `render_tile()` forces
+smooth coloring for Collatz regardless of `color_mode`.
 
 **Lyapunov exponent** λ = (1/N) Σ log|f'(z_k)|, where log|f'(z)| = log(n) +
 (n-1)/2 · log(|z|²). Mapped to palette via `lyapunov_color()` in `palette.hpp`
@@ -378,6 +394,11 @@ is better. Baseline is stored in `scalar_baseline.txt` (local, not committed).
   in the render area picks the seed; drawn as dots (red seed, yellow rest) using
   `ImDrawList` inside `##render`. The orbit Ctrl+click suppresses the pan handler
   via `!io.KeyCtrl` guard.
+- **Collatz bailout:** Uses `COLLATZ_BAILOUT2 = 10000` (bailout radius 100) instead
+  of 4 for other formulas. Both `collatz_iter()`, `scalar_lyapunov_iter()`, and
+  `compute_orbit()` use the larger bailout. The AVX kernel `avx_collatz_4()` has its
+  own bailout constant. Collatz uses SLEEF `sincos` + `exp` (for cosh/sinh) in the
+  AVX path — similar perf profile to MultiSlow.
 - **Export filename race:** The filename shown in the dialog is regenerated each
   frame. `exp_saved_name` captures it at the moment Export is clicked — use that
   in the success message, not the live-generated string.
