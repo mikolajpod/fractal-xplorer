@@ -358,7 +358,11 @@ compute_orbit(double re, double im, const ViewState& vs, int max_n = 20)
     pts.reserve(static_cast<size_t>(max_n) + 1);
 
     double zr, zi, cr, ci;
-    if (vs.julia_mode) {
+    if (vs.formula == FormulaType::Collatz) {
+        // Collatz: z0 = pixel, no c parameter (z=0 is a fixed point)
+        zr = re; zi = im;
+        cr = 0.0; ci = 0.0;
+    } else if (vs.julia_mode) {
         zr = re; zi = im;
         cr = vs.julia_re; ci = vs.julia_im;
     } else {
