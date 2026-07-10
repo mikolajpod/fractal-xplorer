@@ -6,7 +6,9 @@ set -euo pipefail
 export PATH="/c/msys64/mingw64/bin:/c/msys64/usr/bin:$PATH"
 
 NAME="fractal_xplorer"
-VERSION="1.9"
+# Version is single-sourced from CMakeLists.txt project()
+VERSION="$(sed -n 's/^project(fractal_xplorer VERSION \([0-9.]*\).*/\1/p' CMakeLists.txt)"
+[ -n "${VERSION}" ] || { echo "ERROR: could not read version from CMakeLists.txt"; exit 1; }
 DIST="${NAME}-${VERSION}-win64"
 BUILD_DIR="build"
 ZIP_NAME="${DIST}.zip"

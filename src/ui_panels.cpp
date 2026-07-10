@@ -3,6 +3,7 @@
 #include "escape_time.hpp"
 #include "palette.hpp"
 #include "export.hpp"
+#include "version.hpp"
 #include "imgui.h"
 
 #include <algorithm>
@@ -776,7 +777,7 @@ void draw_about_dialog(AppState& app)
     }
     if (ImGui::BeginPopupModal("About##dlg", nullptr,
                                ImGuiWindowFlags_AlwaysAutoResize)) {
-        ImGui::Text("Fractal Xplorer  v1.7");
+        ImGui::Text("Fractal Xplorer  v" APP_VERSION);
         ImGui::Separator();
         ImGui::Spacing();
         ImGui::Text("A fast, no-nonsense fractal explorer.");

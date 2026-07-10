@@ -1,5 +1,9 @@
 cmake_minimum_required(VERSION 3.20)
-project(fractal_xplorer VERSION 1.8 LANGUAGES CXX)
+project(fractal_xplorer VERSION 1.9 LANGUAGES CXX)
+
+# Single source of truth for the app version — generates version.hpp
+# (used by the About dialog); package.sh greps the version from this file.
+configure_file(src/version.hpp.in version.hpp @ONLY)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -51,6 +55,7 @@ target_include_directories(fractal_xplorer PRIVATE
     ${imgui_SOURCE_DIR}
     ${imgui_SOURCE_DIR}/backends
     ${SLEEF_INCLUDE_DIRS}
+    ${CMAKE_CURRENT_BINARY_DIR}   # generated version.hpp
 )
 
 target_link_libraries(fractal_xplorer PRIVATE
