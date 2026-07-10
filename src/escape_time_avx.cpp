@@ -373,6 +373,12 @@ static void avx_multibrot_slow_kernel(double re0, double scale, double im,
         __m256d new_zr = _mm256_add_pd(_mm256_mul_pd(r_n, sc.y), cr);
         __m256d new_zi = _mm256_add_pd(_mm256_mul_pd(r_n, sc.x), ci);
 
+        // z == 0: log(0) = -inf poisons the polar form (NaN for n < 0);
+        // match the scalar kernel's special case z <- c
+        const __m256d zero_mask = _mm256_cmp_pd(mag2, _mm256_setzero_pd(), _CMP_EQ_OQ);
+        new_zr = _mm256_blendv_pd(new_zr, cr, zero_mask);
+        new_zi = _mm256_blendv_pd(new_zi, ci, zero_mask);
+
         zr = _mm256_blendv_pd(zr, new_zr, active);
         zi = _mm256_blendv_pd(zi, new_zi, active);
         iters_d = _mm256_add_pd(iters_d, _mm256_and_pd(active, one));
