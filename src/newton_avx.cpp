@@ -7,16 +7,16 @@
 // ComputeSmooth=false skips step_mag2 tracking and log() for flat coloring.
 
 template <bool ComputeSmooth>
-static void avx_newton_4_impl(double re0, double scale, double im,
+static void avx_newton_4_impl(double x0, int px, double scale, double im,
                                int max_iter, int degree,
                                const double* coeffs_re, const double* coeffs_im,
                                const double* roots_re, const double* roots_im,
                                int* root4, double* smooth4)
 {
-    // Initial z values: 4 consecutive pixels
-    __m256d zr = _mm256_add_pd(_mm256_set1_pd(re0),
-                               _mm256_mul_pd(_mm256_set1_pd(scale),
-                                             _mm256_set_pd(3.0, 2.0, 1.0, 0.0)));
+    // Initial z values: 4 consecutive pixels.
+    // Lane coords use the scalar path's exact rounding: fl(x0 + (px+k)*scale).
+    __m256d zr = _mm256_set_pd(x0 + (px + 3) * scale, x0 + (px + 2) * scale,
+                                x0 + (px + 1) * scale, x0 +  px      * scale);
     __m256d zi = _mm256_set1_pd(im);
 
     __m256d iters_d    = _mm256_setzero_pd();
@@ -145,24 +145,24 @@ static void avx_newton_4_impl(double re0, double scale, double im,
 }
 
 // Public entry points
-void avx_newton_4(double re0, double scale, double im,
+void avx_newton_4(double x0, int px, double scale, double im,
                   int max_iter, int degree,
                   const double* coeffs_re, const double* coeffs_im,
                   const double* roots_re, const double* roots_im,
                   int* root4, double* smooth4)
 {
-    avx_newton_4_impl<false>(re0, scale, im, max_iter, degree,
+    avx_newton_4_impl<false>(x0, px, scale, im, max_iter, degree,
                              coeffs_re, coeffs_im, roots_re, roots_im,
                              root4, smooth4);
 }
 
-void avx_newton_smooth_4(double re0, double scale, double im,
+void avx_newton_smooth_4(double x0, int px, double scale, double im,
                           int max_iter, int degree,
                           const double* coeffs_re, const double* coeffs_im,
                           const double* roots_re, const double* roots_im,
                           int* root4, double* smooth4)
 {
-    avx_newton_4_impl<true>(re0, scale, im, max_iter, degree,
+    avx_newton_4_impl<true>(x0, px, scale, im, max_iter, degree,
                             coeffs_re, coeffs_im, roots_re, roots_im,
                             root4, smooth4);
 }

@@ -46,8 +46,11 @@ inline NewtonResult newton_iter(double re, double im, const ViewState& vs)
         const double denom = dr * dr + di * di;
         if (denom < 1e-30) break;  // degenerate derivative
 
-        const double step_re = (pr * dr + pi * di) / denom;
-        const double step_im = (pi * dr - pr * di) / denom;
+        // multiply by reciprocal (not two divisions) — the AVX kernel does
+        // the same, keeping both paths bit-identical
+        const double inv_denom = 1.0 / denom;
+        const double step_re = (pr * dr + pi * di) * inv_denom;
+        const double step_im = (pi * dr - pr * di) * inv_denom;
 
         zr -= step_re;
         zi -= step_im;

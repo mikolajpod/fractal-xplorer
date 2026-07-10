@@ -59,16 +59,15 @@ void CpuRenderer::render_tile(const ViewState& vs, PixelBuffer& buf,
             // AVX path: 4 pixels at a time
             if (use_avx) {
                 for (; px + 4 <= end; px += 4) {
-                    const double re0 = x0 + px * scale;
                     int root4[4];
                     double smooth4[4];
                     if (newton_smooth)
-                        avx_newton_smooth_4(re0, scale, im, vs.max_iter, vs.newton_degree,
+                        avx_newton_smooth_4(x0, px, scale, im, vs.max_iter, vs.newton_degree,
                                      vs.newton_coeffs_re, vs.newton_coeffs_im,
                                      vs.newton_roots_re, vs.newton_roots_im,
                                      root4, smooth4);
                     else
-                        avx_newton_4(re0, scale, im, vs.max_iter, vs.newton_degree,
+                        avx_newton_4(x0, px, scale, im, vs.max_iter, vs.newton_degree,
                                      vs.newton_coeffs_re, vs.newton_coeffs_im,
                                      vs.newton_roots_re, vs.newton_roots_im,
                                      root4, smooth4);
@@ -136,56 +135,55 @@ void CpuRenderer::render_tile(const ViewState& vs, PixelBuffer& buf,
 
         if (use_avx_here) {
             for (; px + 4 <= end; px += 4) {
-                const double re0 = x0 + px * scale;
 
                 if (vs.color_mode == COLOR_SMOOTH || vs.formula == FormulaType::Collatz) {
                     double smooth4[4];
                     switch (vs.formula) {
                         case FormulaType::Standard:
                             if (vs.julia_mode)
-                                avx_julia_4(re0, scale, im, vs.max_iter,
+                                avx_julia_4(x0, px, scale, im, vs.max_iter,
                                              vs.julia_re, vs.julia_im, smooth4);
                             else
-                                avx_mandelbrot_4(re0, scale, im, vs.max_iter, smooth4);
+                                avx_mandelbrot_4(x0, px, scale, im, vs.max_iter, smooth4);
                             break;
                         case FormulaType::BurningShip:
                             if (vs.julia_mode)
-                                avx_burning_ship_julia_4(re0, scale, im, vs.max_iter,
+                                avx_burning_ship_julia_4(x0, px, scale, im, vs.max_iter,
                                                           vs.julia_re, vs.julia_im, smooth4);
                             else
-                                avx_burning_ship_4(re0, scale, im, vs.max_iter, smooth4);
+                                avx_burning_ship_4(x0, px, scale, im, vs.max_iter, smooth4);
                             break;
                         case FormulaType::Mandelbar:
                             if (vs.julia_mode) {
                                 if (vs.multibrot_exp == 2)
-                                    avx_mandelbar_julia_4(re0, scale, im, vs.max_iter,
+                                    avx_mandelbar_julia_4(x0, px, scale, im, vs.max_iter,
                                                            vs.julia_re, vs.julia_im, smooth4);
                                 else
-                                    avx_mandelbar_multi_julia_4(re0, scale, im, vs.max_iter,
+                                    avx_mandelbar_multi_julia_4(x0, px, scale, im, vs.max_iter,
                                                                   vs.multibrot_exp,
                                                                   vs.julia_re, vs.julia_im, smooth4);
                             } else {
                                 if (vs.multibrot_exp == 2)
-                                    avx_mandelbar_4(re0, scale, im, vs.max_iter, smooth4);
+                                    avx_mandelbar_4(x0, px, scale, im, vs.max_iter, smooth4);
                                 else
-                                    avx_mandelbar_multi_4(re0, scale, im, vs.max_iter,
+                                    avx_mandelbar_multi_4(x0, px, scale, im, vs.max_iter,
                                                            vs.multibrot_exp, smooth4);
                             }
                             break;
                         case FormulaType::MultiFast:
                             if (vs.julia_mode) {
                                 if (vs.multibrot_exp == 2)
-                                    avx_julia_4(re0, scale, im, vs.max_iter,
+                                    avx_julia_4(x0, px, scale, im, vs.max_iter,
                                                  vs.julia_re, vs.julia_im, smooth4);
                                 else
-                                    avx_multijulia_4(re0, scale, im, vs.max_iter,
+                                    avx_multijulia_4(x0, px, scale, im, vs.max_iter,
                                                       vs.multibrot_exp,
                                                       vs.julia_re, vs.julia_im, smooth4);
                             } else {
                                 if (vs.multibrot_exp == 2)
-                                    avx_mandelbrot_4(re0, scale, im, vs.max_iter, smooth4);
+                                    avx_mandelbrot_4(x0, px, scale, im, vs.max_iter, smooth4);
                                 else
-                                    avx_multibrot_4(re0, scale, im, vs.max_iter,
+                                    avx_multibrot_4(x0, px, scale, im, vs.max_iter,
                                                      vs.multibrot_exp, smooth4);
                             }
                             break;
@@ -193,48 +191,48 @@ void CpuRenderer::render_tile(const ViewState& vs, PixelBuffer& buf,
                             if (slow_int_n > 0) {
                                 if (vs.julia_mode) {
                                     if (slow_int_n == 2)
-                                        avx_julia_4(re0, scale, im, vs.max_iter,
+                                        avx_julia_4(x0, px, scale, im, vs.max_iter,
                                                      vs.julia_re, vs.julia_im, smooth4);
                                     else
-                                        avx_multijulia_4(re0, scale, im, vs.max_iter,
+                                        avx_multijulia_4(x0, px, scale, im, vs.max_iter,
                                                           slow_int_n,
                                                           vs.julia_re, vs.julia_im, smooth4);
                                 } else {
                                     if (slow_int_n == 2)
-                                        avx_mandelbrot_4(re0, scale, im, vs.max_iter, smooth4);
+                                        avx_mandelbrot_4(x0, px, scale, im, vs.max_iter, smooth4);
                                     else
-                                        avx_multibrot_4(re0, scale, im, vs.max_iter,
+                                        avx_multibrot_4(x0, px, scale, im, vs.max_iter,
                                                          slow_int_n, smooth4);
                                 }
                             } else {
                                 if (vs.julia_mode)
-                                    avx_multijulia_slow_4(re0, scale, im, vs.max_iter,
+                                    avx_multijulia_slow_4(x0, px, scale, im, vs.max_iter,
                                                             vs.multibrot_exp_f,
                                                             vs.julia_re, vs.julia_im, smooth4);
                                 else
-                                    avx_multibrot_slow_4(re0, scale, im, vs.max_iter,
+                                    avx_multibrot_slow_4(x0, px, scale, im, vs.max_iter,
                                                            vs.multibrot_exp_f, smooth4);
                             }
                             break;
                         case FormulaType::Celtic:
                             if (vs.julia_mode)
-                                avx_celtic_julia_4(re0, scale, im, vs.max_iter,
+                                avx_celtic_julia_4(x0, px, scale, im, vs.max_iter,
                                                     vs.julia_re, vs.julia_im, smooth4);
                             else
-                                avx_celtic_4(re0, scale, im, vs.max_iter, smooth4);
+                                avx_celtic_4(x0, px, scale, im, vs.max_iter, smooth4);
                             break;
                         case FormulaType::Buffalo:
                             if (vs.julia_mode)
-                                avx_buffalo_julia_4(re0, scale, im, vs.max_iter,
+                                avx_buffalo_julia_4(x0, px, scale, im, vs.max_iter,
                                                      vs.julia_re, vs.julia_im, smooth4);
                             else
-                                avx_buffalo_4(re0, scale, im, vs.max_iter, smooth4);
+                                avx_buffalo_4(x0, px, scale, im, vs.max_iter, smooth4);
                             break;
                         case FormulaType::Collatz:
-                            avx_collatz_4(re0, scale, im, vs.max_iter, smooth4);
+                            avx_collatz_4(x0, px, scale, im, vs.max_iter, smooth4);
                             break;
                         default:
-                            avx_mandelbrot_4(re0, scale, im, vs.max_iter, smooth4);
+                            avx_mandelbrot_4(x0, px, scale, im, vs.max_iter, smooth4);
                             break;
                     }
                     for (int k = 0; k < 4; ++k)
@@ -243,7 +241,7 @@ void CpuRenderer::render_tile(const ViewState& vs, PixelBuffer& buf,
                 } else {
                     // Lyapunov mode: compute both smooth and lambda
                     double smooth4[4], lyap4[4];
-                    avx_lyapunov_4(vs.formula, vs.julia_mode, re0, scale, im,
+                    avx_lyapunov_4(vs.formula, vs.julia_mode, x0, px, scale, im,
                                      vs.max_iter, vs.multibrot_exp, vs.multibrot_exp_f,
                                      vs.julia_re, vs.julia_im, smooth4, lyap4);
                     for (int k = 0; k < 4; ++k) {

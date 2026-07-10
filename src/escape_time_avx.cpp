@@ -18,12 +18,14 @@
 // -----------------------------------------------------------------------
 template<bool IsJulia, bool IsBurningShip, bool IsMandelbar,
          bool AbsRe = false, bool AbsIm = false, bool ComputeLyapunov = false>
-static void avx_kernel(double re0, double scale, double im, int max_iter,
+static void avx_kernel(double x0, int px, double scale, double im, int max_iter,
                         double c_re, double c_im, double* out4,
                         double* lyap_out4 = nullptr)
 {
-    __m256d re4 = _mm256_set_pd(re0 + 3.0*scale, re0 + 2.0*scale,
-                                 re0 +     scale,  re0);
+    // Lane coords use the scalar path's exact rounding: fl(x0 + (px+k)*scale).
+    // re0 + k*scale rounds differently and seeds visible chaotic divergence.
+    __m256d re4 = _mm256_set_pd(x0 + (px + 3) * scale, x0 + (px + 2) * scale,
+                                 x0 + (px + 1) * scale, x0 +  px      * scale);
     __m256d cr, ci, zr, zi;
     if constexpr (IsJulia) {
         cr = _mm256_set1_pd(c_re);
@@ -92,8 +94,8 @@ static void avx_kernel(double re0, double scale, double im, int max_iter,
         if constexpr (IsBurningShip) {
             const __m256d azr = _mm256_andnot_pd(sign_bit, zr);  // |zr|
             const __m256d azi = _mm256_andnot_pd(sign_bit, zi);  // |zi|
-            new_zr = _mm256_add_pd(_mm256_mul_pd(zr, zr),
-                         _mm256_sub_pd(cr, _mm256_mul_pd(zi, zi)));  // zr^2 - zi^2 + cr
+            // (zr^2 - zi^2) + cr — scalar kernel's association, for bit parity
+            new_zr = _mm256_add_pd(_mm256_sub_pd(zr2, zi2), cr);
             new_zi = _mm256_add_pd(_mm256_mul_pd(_mm256_add_pd(azr, azr), azi), ci);  // 2|zr||zi| + ci
         } else if constexpr (AbsRe || AbsIm) {
             // Celtic (AbsRe only) / Buffalo (AbsRe+AbsIm): abs applied after squaring
@@ -104,8 +106,8 @@ static void avx_kernel(double re0, double scale, double im, int max_iter,
             new_zi = _mm256_add_pd(
                 AbsIm ? _mm256_andnot_pd(sign_bit, im_raw) : im_raw, ci);
         } else {
-            new_zr = _mm256_add_pd(_mm256_mul_pd(zr, zr),
-                         _mm256_sub_pd(cr, _mm256_mul_pd(zi, zi)));  // zr^2 - zi^2 + cr
+            // (zr^2 - zi^2) + cr — scalar kernel's association, for bit parity
+            new_zr = _mm256_add_pd(_mm256_sub_pd(zr2, zi2), cr);
             if constexpr (IsMandelbar)
                 new_zi = _mm256_sub_pd(ci, _mm256_mul_pd(_mm256_add_pd(zr, zr), zi)); // -2*zr*zi + ci
             else
@@ -147,28 +149,28 @@ static void avx_kernel(double re0, double scale, double im, int max_iter,
 // Public entry points
 // -----------------------------------------------------------------------
 
-void avx_mandelbrot_4(double re0, double scale, double im,
+void avx_mandelbrot_4(double x0, int px, double scale, double im,
                       int max_iter, double* out4)
 {
-    avx_kernel<false, false, false>(re0, scale, im, max_iter, 0.0, 0.0, out4);
+    avx_kernel<false, false, false>(x0, px, scale, im, max_iter, 0.0, 0.0, out4);
 }
 
-void avx_julia_4(double re0, double scale, double im,
+void avx_julia_4(double x0, int px, double scale, double im,
                  int max_iter, double julia_re, double julia_im, double* out4)
 {
-    avx_kernel<true, false, false>(re0, scale, im, max_iter, julia_re, julia_im, out4);
+    avx_kernel<true, false, false>(x0, px, scale, im, max_iter, julia_re, julia_im, out4);
 }
 
-void avx_burning_ship_4(double re0, double scale, double im,
+void avx_burning_ship_4(double x0, int px, double scale, double im,
                         int max_iter, double* out4)
 {
-    avx_kernel<false, true, false>(re0, scale, im, max_iter, 0.0, 0.0, out4);
+    avx_kernel<false, true, false>(x0, px, scale, im, max_iter, 0.0, 0.0, out4);
 }
 
-void avx_mandelbar_4(double re0, double scale, double im,
+void avx_mandelbar_4(double x0, int px, double scale, double im,
                      int max_iter, double* out4)
 {
-    avx_kernel<false, false, true>(re0, scale, im, max_iter, 0.0, 0.0, out4);
+    avx_kernel<false, false, true>(x0, px, scale, im, max_iter, 0.0, 0.0, out4);
 }
 
 // -----------------------------------------------------------------------
@@ -177,12 +179,14 @@ void avx_mandelbar_4(double re0, double scale, double im,
 // Smooth coloring uses log(exp_n) as the base instead of log(2).
 // -----------------------------------------------------------------------
 template<bool IsJulia, bool IsMandelbar = false, bool ComputeLyapunov = false>
-static void avx_multibrot_kernel(double re0, double scale, double im, int max_iter,
+static void avx_multibrot_kernel(double x0, int px, double scale, double im, int max_iter,
                                    int exp_n, double c_re, double c_im, double* out4,
                                    double* lyap_out4 = nullptr)
 {
-    __m256d re4 = _mm256_set_pd(re0 + 3.0*scale, re0 + 2.0*scale,
-                                 re0 +     scale,  re0);
+    // Lane coords use the scalar path's exact rounding: fl(x0 + (px+k)*scale).
+    // re0 + k*scale rounds differently and seeds visible chaotic divergence.
+    __m256d re4 = _mm256_set_pd(x0 + (px + 3) * scale, x0 + (px + 2) * scale,
+                                 x0 + (px + 1) * scale, x0 +  px      * scale);
     __m256d cr, ci, zr, zi;
     if constexpr (IsJulia) {
         cr = _mm256_set1_pd(c_re);
@@ -281,23 +285,23 @@ static void avx_multibrot_kernel(double re0, double scale, double im, int max_it
     }
 }
 
-void avx_multibrot_4(double re0, double scale, double im,
+void avx_multibrot_4(double x0, int px, double scale, double im,
                      int max_iter, int exp_n, double* out4)
 {
-    avx_multibrot_kernel<false>(re0, scale, im, max_iter, exp_n, 0.0, 0.0, out4);
+    avx_multibrot_kernel<false>(x0, px, scale, im, max_iter, exp_n, 0.0, 0.0, out4);
 }
 
-void avx_multijulia_4(double re0, double scale, double im,
+void avx_multijulia_4(double x0, int px, double scale, double im,
                       int max_iter, int exp_n,
                       double julia_re, double julia_im, double* out4)
 {
-    avx_multibrot_kernel<true>(re0, scale, im, max_iter, exp_n, julia_re, julia_im, out4);
+    avx_multibrot_kernel<true>(x0, px, scale, im, max_iter, exp_n, julia_re, julia_im, out4);
 }
 
-void avx_mandelbar_multi_4(double re0, double scale, double im,
+void avx_mandelbar_multi_4(double x0, int px, double scale, double im,
                            int max_iter, int exp_n, double* out4)
 {
-    avx_multibrot_kernel<false, true>(re0, scale, im, max_iter, exp_n, 0.0, 0.0, out4);
+    avx_multibrot_kernel<false, true>(x0, px, scale, im, max_iter, exp_n, 0.0, 0.0, out4);
 }
 
 // -----------------------------------------------------------------------
@@ -305,13 +309,15 @@ void avx_mandelbar_multi_4(double re0, double scale, double im,
 // Uses polar form: z^n = |z|^n * e^(i*n*theta), vectorized with SLEEF.
 // -----------------------------------------------------------------------
 template<bool IsJulia, bool ComputeLyapunov = false>
-static void avx_multibrot_slow_kernel(double re0, double scale, double im,
+static void avx_multibrot_slow_kernel(double x0, int px, double scale, double im,
                                         int max_iter, double exp_n,
                                         double c_re, double c_im, double* out4,
                                         double* lyap_out4 = nullptr)
 {
-    __m256d re4 = _mm256_set_pd(re0 + 3.0*scale, re0 + 2.0*scale,
-                                 re0 +     scale,  re0);
+    // Lane coords use the scalar path's exact rounding: fl(x0 + (px+k)*scale).
+    // re0 + k*scale rounds differently and seeds visible chaotic divergence.
+    __m256d re4 = _mm256_set_pd(x0 + (px + 3) * scale, x0 + (px + 2) * scale,
+                                 x0 + (px + 1) * scale, x0 +  px      * scale);
     __m256d cr, ci, zr, zi;
     if constexpr (IsJulia) {
         cr = _mm256_set1_pd(c_re);
@@ -407,66 +413,66 @@ static void avx_multibrot_slow_kernel(double re0, double scale, double im,
     }
 }
 
-void avx_multibrot_slow_4(double re0, double scale, double im,
+void avx_multibrot_slow_4(double x0, int px, double scale, double im,
                           int max_iter, double exp_n, double* out4)
 {
-    avx_multibrot_slow_kernel<false>(re0, scale, im, max_iter, exp_n, 0.0, 0.0, out4);
+    avx_multibrot_slow_kernel<false>(x0, px, scale, im, max_iter, exp_n, 0.0, 0.0, out4);
 }
 
-void avx_multijulia_slow_4(double re0, double scale, double im,
+void avx_multijulia_slow_4(double x0, int px, double scale, double im,
                             int max_iter, double exp_n,
                             double julia_re, double julia_im, double* out4)
 {
-    avx_multibrot_slow_kernel<true>(re0, scale, im, max_iter, exp_n, julia_re, julia_im, out4);
+    avx_multibrot_slow_kernel<true>(x0, px, scale, im, max_iter, exp_n, julia_re, julia_im, out4);
 }
 
-void avx_burning_ship_julia_4(double re0, double scale, double im,
+void avx_burning_ship_julia_4(double x0, int px, double scale, double im,
                               int max_iter, double julia_re, double julia_im,
                               double* out4)
 {
-    avx_kernel<true, true, false>(re0, scale, im, max_iter, julia_re, julia_im, out4);
+    avx_kernel<true, true, false>(x0, px, scale, im, max_iter, julia_re, julia_im, out4);
 }
 
-void avx_mandelbar_julia_4(double re0, double scale, double im,
+void avx_mandelbar_julia_4(double x0, int px, double scale, double im,
                            int max_iter, double julia_re, double julia_im,
                            double* out4)
 {
-    avx_kernel<true, false, true>(re0, scale, im, max_iter, julia_re, julia_im, out4);
+    avx_kernel<true, false, true>(x0, px, scale, im, max_iter, julia_re, julia_im, out4);
 }
 
-void avx_mandelbar_multi_julia_4(double re0, double scale, double im,
+void avx_mandelbar_multi_julia_4(double x0, int px, double scale, double im,
                                  int max_iter, int exp_n,
                                  double julia_re, double julia_im, double* out4)
 {
-    avx_multibrot_kernel<true, true>(re0, scale, im, max_iter, exp_n, julia_re, julia_im, out4);
+    avx_multibrot_kernel<true, true>(x0, px, scale, im, max_iter, exp_n, julia_re, julia_im, out4);
 }
 
 // -----------------------------------------------------------------------
 // Celtic and Buffalo entry points
 // -----------------------------------------------------------------------
 
-void avx_celtic_4(double re0, double scale, double im,
+void avx_celtic_4(double x0, int px, double scale, double im,
                   int max_iter, double* out4)
 {
-    avx_kernel<false, false, false, true, false>(re0, scale, im, max_iter, 0.0, 0.0, out4);
+    avx_kernel<false, false, false, true, false>(x0, px, scale, im, max_iter, 0.0, 0.0, out4);
 }
 
-void avx_celtic_julia_4(double re0, double scale, double im,
+void avx_celtic_julia_4(double x0, int px, double scale, double im,
                         int max_iter, double julia_re, double julia_im, double* out4)
 {
-    avx_kernel<true, false, false, true, false>(re0, scale, im, max_iter, julia_re, julia_im, out4);
+    avx_kernel<true, false, false, true, false>(x0, px, scale, im, max_iter, julia_re, julia_im, out4);
 }
 
-void avx_buffalo_4(double re0, double scale, double im,
+void avx_buffalo_4(double x0, int px, double scale, double im,
                    int max_iter, double* out4)
 {
-    avx_kernel<false, false, false, true, true>(re0, scale, im, max_iter, 0.0, 0.0, out4);
+    avx_kernel<false, false, false, true, true>(x0, px, scale, im, max_iter, 0.0, 0.0, out4);
 }
 
-void avx_buffalo_julia_4(double re0, double scale, double im,
+void avx_buffalo_julia_4(double x0, int px, double scale, double im,
                          int max_iter, double julia_re, double julia_im, double* out4)
 {
-    avx_kernel<true, false, false, true, true>(re0, scale, im, max_iter, julia_re, julia_im, out4);
+    avx_kernel<true, false, false, true, true>(x0, px, scale, im, max_iter, julia_re, julia_im, out4);
 }
 
 // -----------------------------------------------------------------------
@@ -476,12 +482,12 @@ void avx_buffalo_julia_4(double re0, double scale, double im,
 // cosh/sinh computed from exp: cosh(x) = (e^x + e^-x)/2, sinh(x) = (e^x - e^-x)/2
 // -----------------------------------------------------------------------
 template<bool ComputeLyapunov = false>
-static void avx_collatz_kernel(double re0, double scale, double im,
+static void avx_collatz_kernel(double x0, int px, double scale, double im,
                                 int max_iter, double* out4,
                                 double* lyap_out4 = nullptr)
 {
-    __m256d zr = _mm256_set_pd(re0 + 3.0*scale, re0 + 2.0*scale,
-                                re0 +     scale,  re0);
+    __m256d zr = _mm256_set_pd(x0 + (px + 3) * scale, x0 + (px + 2) * scale,
+                                x0 + (px + 1) * scale, x0 +  px      * scale);
     __m256d zi = _mm256_set1_pd(im);
 
     const __m256d bailout = _mm256_set1_pd(10000.0);
@@ -585,17 +591,17 @@ static void avx_collatz_kernel(double re0, double scale, double im,
     }
 }
 
-void avx_collatz_4(double re0, double scale, double im,
+void avx_collatz_4(double x0, int px, double scale, double im,
                    int max_iter, double* out4)
 {
-    avx_collatz_kernel<false>(re0, scale, im, max_iter, out4);
+    avx_collatz_kernel<false>(x0, px, scale, im, max_iter, out4);
 }
 
 // -----------------------------------------------------------------------
 // Lyapunov dispatch — computes both smooth and lambda for 4 pixels.
 // -----------------------------------------------------------------------
 void avx_lyapunov_4(FormulaType formula, bool julia_mode,
-                    double re0, double scale, double im,
+                    double x0, int px, double scale, double im,
                     int max_iter, int exp_i, double exp_f,
                     double julia_re, double julia_im,
                     double* smooth4, double* lyap4)
@@ -610,79 +616,79 @@ void avx_lyapunov_4(FormulaType formula, bool julia_mode,
     switch (formula) {
         case FormulaType::Standard:
             if (julia_mode)
-                avx_kernel<true,false,false,false,false,true>(re0,scale,im,max_iter,julia_re,julia_im,smooth4,lyap4);
+                avx_kernel<true,false,false,false,false,true>(x0,px,scale,im,max_iter,julia_re,julia_im,smooth4,lyap4);
             else
-                avx_kernel<false,false,false,false,false,true>(re0,scale,im,max_iter,0.0,0.0,smooth4,lyap4);
+                avx_kernel<false,false,false,false,false,true>(x0,px,scale,im,max_iter,0.0,0.0,smooth4,lyap4);
             break;
         case FormulaType::BurningShip:
             if (julia_mode)
-                avx_kernel<true,true,false,false,false,true>(re0,scale,im,max_iter,julia_re,julia_im,smooth4,lyap4);
+                avx_kernel<true,true,false,false,false,true>(x0,px,scale,im,max_iter,julia_re,julia_im,smooth4,lyap4);
             else
-                avx_kernel<false,true,false,false,false,true>(re0,scale,im,max_iter,0.0,0.0,smooth4,lyap4);
+                avx_kernel<false,true,false,false,false,true>(x0,px,scale,im,max_iter,0.0,0.0,smooth4,lyap4);
             break;
         case FormulaType::Celtic:
             if (julia_mode)
-                avx_kernel<true,false,false,true,false,true>(re0,scale,im,max_iter,julia_re,julia_im,smooth4,lyap4);
+                avx_kernel<true,false,false,true,false,true>(x0,px,scale,im,max_iter,julia_re,julia_im,smooth4,lyap4);
             else
-                avx_kernel<false,false,false,true,false,true>(re0,scale,im,max_iter,0.0,0.0,smooth4,lyap4);
+                avx_kernel<false,false,false,true,false,true>(x0,px,scale,im,max_iter,0.0,0.0,smooth4,lyap4);
             break;
         case FormulaType::Buffalo:
             if (julia_mode)
-                avx_kernel<true,false,false,true,true,true>(re0,scale,im,max_iter,julia_re,julia_im,smooth4,lyap4);
+                avx_kernel<true,false,false,true,true,true>(x0,px,scale,im,max_iter,julia_re,julia_im,smooth4,lyap4);
             else
-                avx_kernel<false,false,false,true,true,true>(re0,scale,im,max_iter,0.0,0.0,smooth4,lyap4);
+                avx_kernel<false,false,false,true,true,true>(x0,px,scale,im,max_iter,0.0,0.0,smooth4,lyap4);
             break;
         case FormulaType::Mandelbar:
             if (julia_mode) {
                 if (exp_i == 2)
-                    avx_kernel<true,false,true,false,false,true>(re0,scale,im,max_iter,julia_re,julia_im,smooth4,lyap4);
+                    avx_kernel<true,false,true,false,false,true>(x0,px,scale,im,max_iter,julia_re,julia_im,smooth4,lyap4);
                 else
-                    avx_multibrot_kernel<true,true,true>(re0,scale,im,max_iter,exp_i,julia_re,julia_im,smooth4,lyap4);
+                    avx_multibrot_kernel<true,true,true>(x0,px,scale,im,max_iter,exp_i,julia_re,julia_im,smooth4,lyap4);
             } else {
                 if (exp_i == 2)
-                    avx_kernel<false,false,true,false,false,true>(re0,scale,im,max_iter,0.0,0.0,smooth4,lyap4);
+                    avx_kernel<false,false,true,false,false,true>(x0,px,scale,im,max_iter,0.0,0.0,smooth4,lyap4);
                 else
-                    avx_multibrot_kernel<false,true,true>(re0,scale,im,max_iter,exp_i,0.0,0.0,smooth4,lyap4);
+                    avx_multibrot_kernel<false,true,true>(x0,px,scale,im,max_iter,exp_i,0.0,0.0,smooth4,lyap4);
             }
             break;
         case FormulaType::MultiFast:
             if (julia_mode) {
                 if (exp_i == 2)
-                    avx_kernel<true,false,false,false,false,true>(re0,scale,im,max_iter,julia_re,julia_im,smooth4,lyap4);
+                    avx_kernel<true,false,false,false,false,true>(x0,px,scale,im,max_iter,julia_re,julia_im,smooth4,lyap4);
                 else
-                    avx_multibrot_kernel<true,false,true>(re0,scale,im,max_iter,exp_i,julia_re,julia_im,smooth4,lyap4);
+                    avx_multibrot_kernel<true,false,true>(x0,px,scale,im,max_iter,exp_i,julia_re,julia_im,smooth4,lyap4);
             } else {
                 if (exp_i == 2)
-                    avx_kernel<false,false,false,false,false,true>(re0,scale,im,max_iter,0.0,0.0,smooth4,lyap4);
+                    avx_kernel<false,false,false,false,false,true>(x0,px,scale,im,max_iter,0.0,0.0,smooth4,lyap4);
                 else
-                    avx_multibrot_kernel<false,false,true>(re0,scale,im,max_iter,exp_i,0.0,0.0,smooth4,lyap4);
+                    avx_multibrot_kernel<false,false,true>(x0,px,scale,im,max_iter,exp_i,0.0,0.0,smooth4,lyap4);
             }
             break;
         case FormulaType::MultiSlow:
             if (slow_int_n > 0) {
                 if (julia_mode) {
                     if (slow_int_n == 2)
-                        avx_kernel<true,false,false,false,false,true>(re0,scale,im,max_iter,julia_re,julia_im,smooth4,lyap4);
+                        avx_kernel<true,false,false,false,false,true>(x0,px,scale,im,max_iter,julia_re,julia_im,smooth4,lyap4);
                     else
-                        avx_multibrot_kernel<true,false,true>(re0,scale,im,max_iter,slow_int_n,julia_re,julia_im,smooth4,lyap4);
+                        avx_multibrot_kernel<true,false,true>(x0,px,scale,im,max_iter,slow_int_n,julia_re,julia_im,smooth4,lyap4);
                 } else {
                     if (slow_int_n == 2)
-                        avx_kernel<false,false,false,false,false,true>(re0,scale,im,max_iter,0.0,0.0,smooth4,lyap4);
+                        avx_kernel<false,false,false,false,false,true>(x0,px,scale,im,max_iter,0.0,0.0,smooth4,lyap4);
                     else
-                        avx_multibrot_kernel<false,false,true>(re0,scale,im,max_iter,slow_int_n,0.0,0.0,smooth4,lyap4);
+                        avx_multibrot_kernel<false,false,true>(x0,px,scale,im,max_iter,slow_int_n,0.0,0.0,smooth4,lyap4);
                 }
             } else {
                 if (julia_mode)
-                    avx_multibrot_slow_kernel<true,true>(re0,scale,im,max_iter,exp_f,julia_re,julia_im,smooth4,lyap4);
+                    avx_multibrot_slow_kernel<true,true>(x0,px,scale,im,max_iter,exp_f,julia_re,julia_im,smooth4,lyap4);
                 else
-                    avx_multibrot_slow_kernel<false,true>(re0,scale,im,max_iter,exp_f,0.0,0.0,smooth4,lyap4);
+                    avx_multibrot_slow_kernel<false,true>(x0,px,scale,im,max_iter,exp_f,0.0,0.0,smooth4,lyap4);
             }
             break;
         case FormulaType::Collatz:
-            avx_collatz_kernel<true>(re0,scale,im,max_iter,smooth4,lyap4);
+            avx_collatz_kernel<true>(x0,px,scale,im,max_iter,smooth4,lyap4);
             break;
         default:
-            avx_kernel<false,false,false,false,false,true>(re0,scale,im,max_iter,0.0,0.0,smooth4,lyap4);
+            avx_kernel<false,false,false,false,false,true>(x0,px,scale,im,max_iter,0.0,0.0,smooth4,lyap4);
             break;
     }
 }
