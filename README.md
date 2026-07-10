@@ -2,8 +2,8 @@
 
 A fast, no-nonsense fractal explorer for Windows.
 Renders Mandelbrot, Julia, Burning Ship, Mandelbar, Multibrot/Multijulia,
-Collatz, and Newton fractals using AVX-vectorised, multithreaded arithmetic —
-no GPU required.
+Collatz, the Perpendicular family, and Newton fractals using AVX-vectorised,
+multithreaded arithmetic — no GPU required.
 
 ![Fractal Xplorer screenshot](window.png)
 
@@ -75,10 +75,15 @@ numeric inputs for typing exact view coordinates) appear below the tabs.
 | Multibrot (z^n+c) | z^n + c | Integer exponent 2–8, fast AVX path |
 | Multibrot (z^r+c, slow) | z^r + c | Real exponent r, any value; AVX polar-form via SLEEF |
 | Collatz | (2+7z−(2+5z)·cos(πz))/4 | Complex extension of the Collatz map; no *c* parameter — the fractal is a thin strip along the real axis |
+| Perp. Mandelbrot | z²+c with Im = −2\|Re z\|·Im z | Perpendicular variant — abs on one factor breaks the symmetry |
+| Perp. Burning Ship | z²+c with Im = 2·Re z·\|Im z\| | Perpendicular Burning Ship — tilted ship with dendrites |
+| Perp. Celtic | \|Re(z²)\| + i(−2\|Re z\|·Im z) + c | Celtic real part + perpendicular imaginary — famous "deep tree" structures |
+| Perp. Buffalo | \|Re(z²)\| + i(−2·Re z·\|Im z\|) + c | Buffalo-style real part + perpendicular imaginary |
+| Lambda | λ·z·(1−z) | Complex logistic map; the pixel is λ, iteration starts at the critical point z₀ = ½. Parameter space is two tangent disks |
 
 **Julia mode** — checkbox below the formula selector. When enabled, each pixel is
 used as the starting point z₀ and *c* is fixed (set via the mini map or re/im inputs).
-Available for every formula except Collatz — giving 15 total combinations.
+Available for every formula except Collatz — giving 25 total combinations.
 
 **Exponent (integer)** — slider 2–8, shown for Mandelbar and Multibrot (z^n+c).
 At n=2: standard degree-2 formula. At n≥3: fast AVX path using repeated complex
@@ -120,7 +125,9 @@ The Lyapunov exponent λ = (1/N) Σ log|f′(zₖ)| measures orbit stability —
 negative λ (attracting orbits) and positive λ (chaotic orbits) map to different
 palette regions, revealing structure inside the set that escape-time coloring
 shows as flat black. Collatz always uses smooth coloring (its derivative doesn't
-follow the z^n form the λ computation assumes).
+follow the z^n form the λ computation assumes). Lambda uses the exact logistic
+derivative λ(1−2z) — its interior Lyapunov coloring is the classic logistic-map
+Lyapunov exponent.
 
 **Julia parameter** — the mini map shows the current formula in Mandelbrot mode,
 making it easy to spot interesting Julia parameters visually.
@@ -260,6 +267,8 @@ The status bar shows the last render time, active path, and thread count.
 | Multibrot (n=3) | 7.11 | 1.91 |
 | Multibrot (r=3.5) | 0.51 | 0.10 |
 | Collatz | 2.18 | 0.59 |
+| Perp. Burning Ship | 10.57 | 4.18 |
+| Lambda | 3.63 | 1.08 |
 | Newton (deg 3) | 16.17 | 5.41 |
 | Newton (deg 5) | 8.29 | 2.69 |
 

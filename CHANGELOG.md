@@ -1,7 +1,14 @@
 # Changelog
 
-## Unreleased
+## v2.0 — 2026-07-10
 
+- **Perpendicular fractal family** — four new formulas: Perpendicular
+  Mandelbrot, Perpendicular Burning Ship, Perpendicular Celtic, and
+  Perpendicular Buffalo (abs applied to a single factor of the imaginary
+  product); full Julia-mode, Lyapunov, orbit, and AVX support
+- **Lambda fractal** — complex logistic map z → λ·z·(1−z); pixel is λ,
+  iteration starts at the critical point z₀ = ½; Julia mode + AVX support;
+  Lyapunov coloring uses the exact logistic derivative λ(1−2z)
 - **Collatz fractal** — smooth complex extension of the Collatz map,
   z → (2+7z−(2+5z)·cos(πz))/4; no *c* parameter, bailout radius 100
 - **Re/Im/Width navigation inputs** — type exact view coordinates in the side panel

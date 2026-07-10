@@ -133,20 +133,26 @@ extracting to scalar, computing 4 logs, and reinserting. This applies to all thr
 kernel templates.
 
 **Scalar kernel structure** — `escape_time.hpp` mirrors the AVX structure with three templates:
-- `scalar_kernel<IsJulia, IsBurningShip, IsMandelbar, AbsRe, AbsIm>` — degree-2 formulas
+- `scalar_kernel<IsJulia, IsBurningShip, IsMandelbar, AbsRe, AbsIm, PerpAbsZr, PerpAbsZi, IsLambda>`
+  — degree-2 formulas; PerpAbsZr/PerpAbsZi take abs of a single factor of the
+  imaginary product (Perpendicular family), IsMandelbar then supplies the sign;
+  IsLambda switches the update to `z <- c*z*(1-z)` and the M-mode seed to z0 = 1/2
 - `scalar_multibrot_kernel<IsJulia, IsMandelbar>` — integer exponent ≥ 2
 - `scalar_multibrot_slow_kernel<IsJulia>` — real exponent (polar form)
 
-The 16 named `*_iter()` template wrappers are one-liners; `collatz_iter()` is a
+The 26 named `*_iter()` template wrappers are one-liners; `collatz_iter()` is a
 standalone implementation (not a template wrapper).
 `scalar_lyapunov_iter()` and `compute_orbit()` remain independent (use their own switch).
 
 **AVX kernel structure** — `escape_time_avx.cpp` contains four templates:
-- `avx_kernel<IsJulia, IsBurningShip, IsMandelbar, AbsRe, AbsIm, ComputeLyapunov>`
-  — for degree-2 formulas; 10 public wrappers cover all (formula × julia_mode)
-  combinations; z update uses mul+add/sub only (**no FMA** — the AVX-only baseline
-  must run on CPUs without FMA); Celtic uses
-  `AbsRe=true`, Buffalo uses `AbsRe=true, AbsIm=true`
+- `avx_kernel<IsJulia, IsBurningShip, IsMandelbar, AbsRe, AbsIm, ComputeLyapunov,
+  PerpAbsZr, PerpAbsZi, IsLambda>` — for degree-2 formulas; 20 public wrappers cover all
+  (formula × julia_mode) combinations; z update uses mul+add/sub only (**no FMA**
+  — the AVX-only baseline must run on CPUs without FMA); Celtic uses
+  `AbsRe=true`, Buffalo uses `AbsRe=true, AbsIm=true`; the Perpendicular family
+  uses `PerpAbsZr`/`PerpAbsZi` (single-factor abs) with `IsMandelbar` as the sign
+  (the perp params are appended *after* ComputeLyapunov so pre-existing explicit
+  instantiations keep their meaning)
 - `avx_multibrot_kernel<IsJulia, IsMandelbar, ComputeLyapunov>` — for integer
   exponent ≥ 2; uses repeated complex multiplication (no trig), smooth coloring
   with `log(exp_n)`; covers MultiFast and Mandelbar with n≥3
@@ -162,10 +168,12 @@ public wrappers are unchanged (`ComputeLyapunov=false`); Lyapunov instantiations
 are called only through `avx_lyapunov_4()`.
 
 `avx_lyapunov_4(formula, julia_mode, ...)` is a single dispatch function that
-covers all 15 formula × julia_mode combinations, routing to `<..., true>`
+covers all 25 formula × julia_mode combinations, routing to `<..., true>`
 template instantiations. It replicates the `slow_int_n` integer promotion logic
 for MultiSlow. Collatz has a Lyapunov template instantiation but `render_tile()`
 bypasses it — Collatz always uses smooth coloring (see ColorMode section).
+Lambda routes to `avx_kernel<..., ComputeLyapunov=true, ..., IsLambda=true>`,
+which accumulates the exact logistic derivative.
 
 `n=2` for Standard dispatches to `avx_mandelbrot_4` / `avx_julia_4`;
 `n≥3` (integer) dispatches to `avx_multibrot_4` / `avx_multijulia_4`;
@@ -175,10 +183,10 @@ When `multibrot_exp_f` is an exact integer (detected by `slow_int_n` in `render_
 MultiSlow routes to the fast integer kernel instead of the polar-form kernel.
 
 **Formula + Julia mode** — `ViewState` has two orthogonal dimensions:
-- `FormulaType formula` — which iteration rule to apply (8 values)
+- `FormulaType formula` — which iteration rule to apply (13 values)
 - `bool julia_mode` — Mandelbrot mode (z₀=0, c=pixel) vs Julia mode (z₀=pixel, c=fixed)
 
-This gives 15 combinations without any enum explosion. `julia_re`/`julia_im` hold
+This gives 25 combinations without any enum explosion. `julia_re`/`julia_im` hold
 the fixed *c* parameter used when `julia_mode=true`. Collatz ignores `julia_mode`
 (always z₀=pixel, no *c* parameter).
 
@@ -248,12 +256,17 @@ enum class FormulaType {
     MultiFast   = 5,  // z^n + c  (integer exp 2-8, AVX)
     MultiSlow   = 6,  // z^n + c  (real exp, AVX polar form via SLEEF)
     Collatz     = 7,  // (2+7z-(2+5z)cos(pi*z))/4  (complex Collatz map)
+    PerpMandelbrot  =  8,  // re = zr^2-zi^2,   im = -2|zr|zi
+    PerpBurningShip =  9,  // re = zr^2-zi^2,   im =  2 zr|zi|
+    PerpCeltic      = 10,  // re = |zr^2-zi^2|, im = -2|zr|zi
+    PerpBuffalo     = 11,  // re = |zr^2-zi^2|, im = -2 zr|zi|
+    Lambda          = 12,  // z -> c*z*(1-z)  (complex logistic map; z0 = 1/2 in M-mode)
 };
-constexpr int FORMULA_COUNT = 8;
+constexpr int FORMULA_COUNT = 13;
 ```
 
-Combined with `bool julia_mode` in `ViewState`, this gives 15 render combinations
-(14 for formulas 0–6 × julia_mode, plus Collatz which ignores julia_mode).
+Combined with `bool julia_mode` in `ViewState`, this gives 25 render combinations
+(24 for the julia-capable formulas × julia_mode, plus Collatz which ignores julia_mode).
 
 `multibrot_exp` (int, 2–8) is the exponent for Mandelbar and MultiFast.
 `multibrot_exp_f` (double) is the exponent for MultiSlow; any real value is accepted.
@@ -280,6 +293,9 @@ tab UI clamps the value to 0–1; Lyapunov values don't apply to Newton.
 **Collatz exception:** Lyapunov modes are not applicable — the Lyapunov derivative
 formula assumes z^n growth which doesn't match Collatz. `render_tile()` forces
 smooth coloring for Collatz regardless of `color_mode`.
+**Lambda:** Lyapunov works and uses the *exact* derivative — `if constexpr
+(IsLambda)` in the accumulation computes log|f'| = log|c| + 0.5·log|1−2z|²
+(scalar mirror in `scalar_lyapunov_iter`); log|c| is hoisted before the loop.
 
 **Lyapunov exponent** λ = (1/N) Σ log|f'(z_k)|, where log|f'(z)| = log(n) +
 (n-1)/2 · log(|z|²). Mapped to palette via `lyapunov_color()` in `palette.hpp`
@@ -301,16 +317,21 @@ Mini-map always uses `COLOR_SMOOTH` (ViewState{} defaults `color_mode=0`).
 
 ## How to Add a New Fixed-Formula Fractal (degree 2)
 
-7 places, 6 files — follow the Burning Ship + Julia pattern:
+8 places, 6 files — follow the Burning Ship + Julia pattern:
 
 1. `view_state.hpp` — add enum value to `FormulaType`, update `fractal_name()`, bump `FORMULA_COUNT`
 2. `escape_time.hpp` — add thin wrapper functions `foo_iter` / `foo_julia_iter` delegating
    to the appropriate scalar template (`scalar_kernel`, `scalar_multibrot_kernel`, or
    `scalar_multibrot_slow_kernel`) with the correct template parameters
+2b. `escape_time.hpp` — add `case FormulaType::Foo:` z-update arms to BOTH
+   `scalar_lyapunov_iter()` and `compute_orbit()` (they have independent switches;
+   a missed case silently renders garbage in Lyapunov mode / freezes the orbit)
 3. `escape_time_avx.hpp` — declare `avx_foo_4()` and `avx_foo_julia_4()`
-4. `escape_time_avx.cpp` — choose one of two approaches:
+4. `escape_time_avx.cpp` — choose one of three approaches:
    - **Abs-after-squaring variant** (Celtic/Buffalo style): reuse existing `AbsRe`/`AbsIm`
      template params — just add wrappers with the right `<IsJulia,...,AbsRe,AbsIm>` values
+   - **Single-factor abs variant** (Perpendicular style): reuse `PerpAbsZr`/`PerpAbsZi`
+     (+ `IsMandelbar` for the sign) — just add wrappers
    - **New z-update rule**: add `bool IsFoo` template parameter to `avx_kernel`,
      add `if constexpr (IsFoo)` branch in the z-update block, add two public wrappers:
      `avx_foo_4()` → `avx_kernel<false, ..., true>(...)` and
@@ -369,7 +390,7 @@ AVX-capable machines without needing old pre-AVX hardware):
 ./build/fractal_xplorer.exe --no-avx
 ```
 
-Single-threaded, 1920×1080, 256 iter, 22 test cases — all 8 escape-time formulas
+Single-threaded, 1920×1080, 256 iter, 26 test cases — 10 escape-time formulas (incl. Perpendicular BS and Lambda)
 plus Newton degree 3 and 5, on both AVX and scalar paths. Reports Mpix/s — higher
 is better. Baseline is stored in `benchmark_baseline.txt` (local, not committed).
 Single rows swing ±2–3% run-to-run — re-run before concluding a regression.

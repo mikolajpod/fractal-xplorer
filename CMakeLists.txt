@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(fractal_xplorer VERSION 1.9 LANGUAGES CXX)
+project(fractal_xplorer VERSION 2.0 LANGUAGES CXX)
 
 # Single source of truth for the app version — generates version.hpp
 # (used by the About dialog); package.sh greps the version from this file.
