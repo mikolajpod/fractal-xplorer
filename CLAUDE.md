@@ -137,21 +137,25 @@ kernel templates.
 - `scalar_multibrot_kernel<IsJulia, IsMandelbar>` — integer exponent ≥ 2
 - `scalar_multibrot_slow_kernel<IsJulia>` — real exponent (polar form)
 
-All 16 named `*_iter()` functions are one-liner wrappers around these templates.
+The 16 named `*_iter()` template wrappers are one-liners; `collatz_iter()` is a
+standalone implementation (not a template wrapper).
 `scalar_lyapunov_iter()` and `compute_orbit()` remain independent (use their own switch).
 
-**AVX kernel structure** — `escape_time_avx.cpp` contains three templates:
+**AVX kernel structure** — `escape_time_avx.cpp` contains four templates:
 - `avx_kernel<IsJulia, IsBurningShip, IsMandelbar, AbsRe, AbsIm, ComputeLyapunov>`
-  — for degree-2 formulas; 12 public wrappers cover all (formula × julia_mode)
-  combinations; uses FMA squaring for Standard/Mandelbar/BurningShip; Celtic uses
+  — for degree-2 formulas; 10 public wrappers cover all (formula × julia_mode)
+  combinations; z update uses mul+add/sub only (**no FMA** — the AVX-only baseline
+  must run on CPUs without FMA); Celtic uses
   `AbsRe=true`, Buffalo uses `AbsRe=true, AbsIm=true`
 - `avx_multibrot_kernel<IsJulia, IsMandelbar, ComputeLyapunov>` — for integer
   exponent ≥ 2; uses repeated complex multiplication (no trig), smooth coloring
   with `log(exp_n)`; covers MultiFast and Mandelbar with n≥3
 - `avx_multibrot_slow_kernel<IsJulia, ComputeLyapunov>` — for real exponent
   (MultiSlow); uses polar-form z^n via SLEEF vectorized log, exp, atan2, sincos
+- `avx_collatz_kernel<ComputeLyapunov>` — Collatz map via SLEEF sincos + exp
+  (cosh/sinh of complex cos(πz)); own bailout constant (|z|² > 10000)
 
-All three templates have a `ComputeLyapunov` bool (default `false`). When `true`,
+All four templates have a `ComputeLyapunov` bool (default `false`). When `true`,
 they accumulate `log|f'(z)| = log(n) + (n-1)/2 * log(|z|²)` per iteration using
 SLEEF log, and output `lambda = sum/count` alongside the smooth value. Existing
 public wrappers are unchanged (`ComputeLyapunov=false`); Lyapunov instantiations
@@ -297,7 +301,7 @@ Mini-map always uses `COLOR_SMOOTH` (ViewState{} defaults `color_mode=0`).
 
 ## How to Add a New Fixed-Formula Fractal (degree 2)
 
-7 places, 4 files — follow the Burning Ship + Julia pattern:
+7 places, 6 files — follow the Burning Ship + Julia pattern:
 
 1. `view_state.hpp` — add enum value to `FormulaType`, update `fractal_name()`, bump `FORMULA_COUNT`
 2. `escape_time.hpp` — add thin wrapper functions `foo_iter` / `foo_julia_iter` delegating
@@ -315,7 +319,7 @@ Mini-map always uses `COLOR_SMOOTH` (ViewState{} defaults `color_mode=0`).
    the scalar switch inside `render_tile()`, dispatch on `vs.julia_mode`
 6. `escape_time_avx.cpp` — add `case FormulaType::Foo:` to `avx_lyapunov_4()`
    dispatch, calling the `<..., true>` Lyapunov template instantiation
-7. `main.cpp` — add the name string to the `names[]` array in the formula Combo
+7. `ui_panels.cpp` — add the name string to the `names[]` array in the formula Combo
 
 ---
 
@@ -336,8 +340,8 @@ Also increment `PALETTE_COUNT` in `palette.hpp`.
 2. Declare it in `export.hpp`
 3. Add the CMake `find_package` / `pkg_check_modules` + conditional
    `target_compile_definitions(fractal_xplorer PRIVATE HAVE_FOO)` to `CMakeLists.txt`
-4. Add a radio button in the export modal in `main.cpp` and a branch in the Export
-   button handler
+4. Add a radio button in `draw_export_dialog()` in `ui_panels.cpp` and a branch
+   in the Export button handler
 
 ---
 
@@ -365,9 +369,33 @@ AVX-capable machines without needing old pre-AVX hardware):
 ./build/fractal_xplorer.exe --no-avx
 ```
 
-Single-threaded, 1920×1080, 256 iter, 20 test cases — all 8 escape-time formulas
+Single-threaded, 1920×1080, 256 iter, 22 test cases — all 8 escape-time formulas
 plus Newton degree 3 and 5, on both AVX and scalar paths. Reports Mpix/s — higher
-is better. Baseline is stored in `scalar_baseline.txt` (local, not committed).
+is better. Baseline is stored in `benchmark_baseline.txt` (local, not committed).
+Single rows swing ±2–3% run-to-run — re-run before concluding a regression.
+
+## Parity Self-Test
+
+After any kernel change, also run the scalar/AVX parity self-test:
+
+```bash
+./build/fractal_xplorer.exe --selftest
+```
+
+It renders every formula / color mode / Newton degree at 320×240 on both paths
+and diffs the pixels. **Expected: 0.000% for everything except the SLEEF-based
+kernels** (MultiSlow polar form ~1 px, Collatz ~14 px, MultiSlow Lyapunov ~6 px —
+SLEEF vs libm transcendental rounding). Any other nonzero row is a real
+regression. Exit code is non-zero if any case exceeds 5%.
+
+Bit parity rests on three invariants (see also the header comments):
+1. AVX kernels take `(x0, px, scale)` and build lane coordinates as
+   `x0 + (px+k)*scale` — the same double-rounding as the scalar loop. Never
+   "simplify" to a precomputed `re0 + k*scale`.
+2. FP associations in AVX z-updates match the scalar kernels exactly,
+   e.g. `(zr²-zi²)+cr`, not `zr²+(cr-zi²)`.
+3. Scalar Newton multiplies by `inv_denom` (not two divisions) to match the
+   AVX kernel.
 
 ---
 

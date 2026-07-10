@@ -1,8 +1,9 @@
 # Fractal Xplorer
 
 A fast, no-nonsense fractal explorer for Windows.
-Renders Mandelbrot, Julia, Burning Ship, Mandelbar, Multibrot/Multijulia, and
-Newton fractals using AVX-vectorised, multithreaded arithmetic — no GPU required.
+Renders Mandelbrot, Julia, Burning Ship, Mandelbar, Multibrot/Multijulia,
+Collatz, and Newton fractals using AVX-vectorised, multithreaded arithmetic —
+no GPU required.
 
 ![Fractal Xplorer screenshot](window.png)
 
@@ -22,7 +23,8 @@ Extract the ZIP anywhere and double-click **fractal_xplorer.exe**.
 
 The app launches directly into a fully-rendered Mandelbrot set. Switch to
 Newton fractals via the **Newton** tab in the side panel.
-Exports are saved to the folder the exe is in.
+Exports are saved to the current working directory — the exe's folder when
+launched by double-click.
 
 ---
 
@@ -56,7 +58,8 @@ Exports are saved to the folder the exe is in.
 ## Side Panel
 
 The side panel has two tabs: **Escape-Time** (classic fractals) and **Newton**
-(Newton's method fractals). Shared controls (iterations slider) appear below the tabs.
+(Newton's method fractals). Shared controls (iterations slider and **Re / Im / W**
+numeric inputs for typing exact view coordinates) appear below the tabs.
 
 ### Escape-Time Tab
 
@@ -71,10 +74,11 @@ The side panel has two tabs: **Escape-Time** (classic fractals) and **Newton**
 | Mandelbar (conj(z)^n+c) | conj(z)^n + c | Tricorn at n=2; exponent slider 2–8, (n+1)-fold symmetry |
 | Multibrot (z^n+c) | z^n + c | Integer exponent 2–8, fast AVX path |
 | Multibrot (z^r+c, slow) | z^r + c | Real exponent r, any value; AVX polar-form via SLEEF |
+| Collatz | (2+7z−(2+5z)·cos(πz))/4 | Complex extension of the Collatz map; no *c* parameter — the fractal is a thin strip along the real axis |
 
 **Julia mode** — checkbox below the formula selector. When enabled, each pixel is
 used as the starting point z₀ and *c* is fixed (set via the mini map or re/im inputs).
-Available for every formula — giving 14 total combinations.
+Available for every formula except Collatz — giving 15 total combinations.
 
 **Exponent (integer)** — slider 2–8, shown for Mandelbar and Multibrot (z^n+c).
 At n=2: standard degree-2 formula. At n≥3: fast AVX path using repeated complex
@@ -104,6 +108,20 @@ Higher values reveal more detail at deep zoom at the cost of speed.
 
 **Offset** slider — shifts the palette along the iteration axis (0 – 1023).
 
+**Color mode** — how pixels are mapped to the palette:
+
+| Mode | Meaning |
+|---|---|
+| Smooth (default) | Classic smooth escape-time coloring |
+| Lyapunov (interior) | Interior points colored by their Lyapunov exponent λ; exterior keeps escape-time coloring |
+| Lyapunov (full) | All pixels colored by λ |
+
+The Lyapunov exponent λ = (1/N) Σ log|f′(zₖ)| measures orbit stability —
+negative λ (attracting orbits) and positive λ (chaotic orbits) map to different
+palette regions, revealing structure inside the set that escape-time coloring
+shows as flat black. Collatz always uses smooth coloring (its derivative doesn't
+follow the z^n form the λ computation assumes).
+
 **Julia parameter** — the mini map shows the current formula in Mandelbrot mode,
 making it easy to spot interesting Julia parameters visually.
 
@@ -127,6 +145,10 @@ instantly on every Ctrl+click; uncheck to hide it.
 Newton fractals visualize the basins of attraction of the Newton-Raphson
 root-finding method applied to a polynomial. Pixels are colored by *which* root
 they converge to, with brightness indicating convergence speed.
+
+**Color** — Flat (default) assigns each root a fixed hue dimmed by iteration
+count; Smooth maps root + convergence speed through the selected palette,
+enabling palette and offset cycling for Newton fractals too.
 
 **Degree** — slider 2–8. Changes the polynomial degree; roots are automatically
 placed evenly on the unit circle when the degree changes.
@@ -170,7 +192,7 @@ Open with `Ctrl+S` or **File → Export Image**.
 
 ### Interactive benchmark
 
-Open with `B` or **Tools → Benchmark**.
+Open with `B` or **Help → Benchmark**.
 
 Renders 1920×1080 Mandelbrot (center −0.5, width 3.5, 256 iter) for each thread
 count from 1 to the number of logical CPUs, averaging 4 runs per setting.
@@ -196,6 +218,22 @@ type results.txt
 ./fractal_xplorer.exe --benchmark
 ```
 
+### Self-test
+
+```
+fractal_xplorer.exe --selftest > results.txt
+```
+
+Renders every formula / color mode / Newton degree on both the AVX and scalar
+paths and reports per-pixel divergence. All formulas are expected at exactly
+0.000% except the SLEEF-based kernels (Multibrot slow, Collatz), which may
+differ by a few pixels. Exit code is non-zero if any case exceeds 5%.
+
+### Other CLI flags
+
+- `--no-avx` — force the scalar path at runtime (the status bar shows which
+  path is active)
+
 ---
 
 ## Performance
@@ -213,16 +251,17 @@ The status bar shows the last render time, active path, and thread count.
 
 | Formula | AVX (Mpix/s) | Scalar (Mpix/s) |
 |---|---|---|
-| Mandelbrot | 8.88 | 3.65 |
-| Julia | 9.05 | 4.18 |
-| Burning Ship | 8.58 | 3.32 |
-| Celtic | 9.19 | 3.57 |
-| Buffalo | 7.28 | 2.71 |
-| Mandelbar (n=2) | 14.98 | 5.77 |
-| Multibrot (n=3) | 7.31 | 1.94 |
+| Mandelbrot | 8.85 | 3.61 |
+| Julia | 8.98 | 4.17 |
+| Burning Ship | 8.51 | 3.18 |
+| Celtic | 9.11 | 3.55 |
+| Buffalo | 7.22 | 2.62 |
+| Mandelbar (n=2) | 14.87 | 5.73 |
+| Multibrot (n=3) | 7.11 | 1.91 |
 | Multibrot (r=3.5) | 0.51 | 0.10 |
-| Newton (deg 3) | 16.56 | 5.39 |
-| Newton (deg 5) | 8.41 | 2.67 |
+| Collatz | 2.18 | 0.59 |
+| Newton (deg 3) | 16.17 | 5.41 |
+| Newton (deg 5) | 8.29 | 2.69 |
 
 ---
 
@@ -247,7 +286,8 @@ cmake -B build -G "MinGW Makefiles" -DCMAKE_PREFIX_PATH="/c/msys64/mingw64"
 cmake --build build -- -j$(nproc)
 ```
 
-**Package (produces `fractal_xplorer-1.8-win64.zip`):**
+**Package (produces `fractal_xplorer-<version>-win64.zip`; the version comes
+from `CMakeLists.txt`):**
 
 ```bash
 bash package.sh

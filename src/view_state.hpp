@@ -13,7 +13,7 @@ enum class FormulaType {
     Buffalo     = 3,  // |Re(z^2)| + i|Im(z^2)| + c
     Mandelbar   = 4,  // conj(z)^n + c  (integer exp 2-8)
     MultiFast   = 5,  // z^n + c  (integer exp 2-8, AVX)
-    MultiSlow   = 6,  // z^n + c  (real exp, scalar)
+    MultiSlow   = 6,  // z^n + c  (real exp, AVX polar form via SLEEF)
     Collatz     = 7,  // (2+7z-(2+5z)cos(pi*z))/4  (complex Collatz map)
 };
 constexpr int FORMULA_COUNT = 8;
