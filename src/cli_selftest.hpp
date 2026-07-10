@@ -121,9 +121,12 @@ inline int run_cli_selftest()
         }
 
         const double pct = 100.0 * ndiff / (static_cast<double>(W) * H);
+        // Non-SLEEF formulas are expected bit-identical (0.000%); only the
+        // SLEEF-transcendental kernels (MultiSlow polar form, Collatz) may
+        // legitimately differ by a few pixels (< 0.02%).
         const char* status = "OK";
-        if (pct >= 5.0)      { status = "FAIL"; ++failures; }
-        else if (pct >= 0.5)   status = "WARN";
+        if (pct >= 5.0)        { status = "FAIL"; ++failures; }
+        else if (pct >= 0.05)    status = "WARN";
 
         printf("%-28s %9ld %7.3f%% %7d   %s", t.label, ndiff, pct, max_dch, status);
         if (ndiff > 0 && worst_x >= 0)
