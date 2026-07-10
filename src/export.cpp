@@ -40,6 +40,7 @@ std::string export_png(const char* path, const PixelBuffer& buf)
     if (setjmp(png_jmpbuf(png))) {
         png_destroy_write_struct(&png, &info);
         std::fclose(fp);
+        std::remove(path);  // don't leave a truncated file behind
         return "PNG write error (libpng longjmp)";
     }
 
@@ -61,7 +62,10 @@ std::string export_png(const char* path, const PixelBuffer& buf)
 
     png_write_end(png, nullptr);
     png_destroy_write_struct(&png, &info);
-    std::fclose(fp);
+    if (std::fclose(fp) != 0) {
+        std::remove(path);
+        return std::string("Write error while flushing (disk full?): ") + path;
+    }
     return {};  // success
 }
 
@@ -112,6 +116,10 @@ std::string export_jxl(const char* path, const PixelBuffer& buf)
 
     // Frame settings: lossless
     JxlEncoderFrameSettings* opts = JxlEncoderFrameSettingsCreate(enc, nullptr);
+    if (!opts) {
+        JxlEncoderDestroy(enc);
+        return "JxlEncoderFrameSettingsCreate failed";
+    }
     if (JxlEncoderSetFrameLossless(opts, JXL_TRUE) != JXL_ENC_SUCCESS) {
         JxlEncoderDestroy(enc);
         return "JxlEncoderSetFrameLossless failed";
@@ -148,8 +156,12 @@ std::string export_jxl(const char* path, const PixelBuffer& buf)
 
     FILE* fp = std::fopen(path, "wb");
     if (!fp) return std::string("Cannot open file for writing: ") + path;
-    std::fwrite(output.data(), 1, output.size(), fp);
-    std::fclose(fp);
+    const size_t written  = std::fwrite(output.data(), 1, output.size(), fp);
+    const bool   close_ok = (std::fclose(fp) == 0);
+    if (written != output.size() || !close_ok) {
+        std::remove(path);  // don't leave a truncated file behind
+        return std::string("Write error (disk full?): ") + path;
+    }
     return {};  // success
 }
 #endif  // HAVE_JXL
