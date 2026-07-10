@@ -58,8 +58,10 @@ inline double scalar_multibrot_kernel(double re, double im, double cr, double ci
         const double zr2 = zr*zr, zi2 = zi*zi;
         if (zr2 + zi2 > 4.0) {
             const double log_zn = std::log(zr2 + zi2) * 0.5;
+            // clamp nu >= 0 so smooth <= i+1: with base log(n) and bailout 4,
+            // a pixel escaping with 4 < |z|^2 < n^2 must not read as interior
             const double nu     = std::log(log_zn / log_n) / log_n;
-            return std::max(0.0, static_cast<double>(i) + 1.0 - nu);
+            return std::max(0.0, static_cast<double>(i) + 1.0 - std::max(0.0, nu));
         }
         double pr = zr, pi = zi;
         for (int k = 1; k < n; ++k) {
@@ -83,14 +85,16 @@ inline double scalar_multibrot_slow_kernel(double re, double im, double cr, doub
     double zi = IsJulia ? im : 0.0;
     const double c_re = IsJulia ? cr : re;
     const double c_im = IsJulia ? ci : im;
-    const double log_n = std::log(n);
+    const double log_n = std::log(smooth_color_base(n));
     int i = 0;
     while (i < max_iter) {
         const double mag2 = zr*zr + zi*zi;
         if (mag2 > 4.0) {
             const double log_zn = std::log(mag2) * 0.5;
+            // clamp nu >= 0 so smooth <= i+1: with base log(n) and bailout 4,
+            // a pixel escaping with 4 < |z|^2 < n^2 must not read as interior
             const double nu     = std::log(log_zn / log_n) / log_n;
-            return std::max(0.0, static_cast<double>(i) + 1.0 - nu);
+            return std::max(0.0, static_cast<double>(i) + 1.0 - std::max(0.0, nu));
         }
         if (mag2 == 0.0) { zr = c_re; zi = c_im; }
         else {
@@ -224,7 +228,8 @@ inline SmoothLyapunov scalar_lyapunov_iter(double re, double im, const ViewState
                 return 2.0;
         }
     }();
-    const double log_n     = std::log(exp_n);
+    const double log_n     = std::log(smooth_color_base(exp_n));           // smooth coloring base
+    const double log_dn    = std::log(std::max(std::abs(exp_n), 1e-300));  // |f'| term, guarded
     const double half_nm1  = (exp_n - 1.0) * 0.5;
 
     double lyap_sum = 0.0;
@@ -235,7 +240,7 @@ inline SmoothLyapunov scalar_lyapunov_iter(double re, double im, const ViewState
 
         // Accumulate Lyapunov: log|f'(z)| = log(n) + (n-1)/2 * log(|z|^2)
         if (mag2 > 0.0) {
-            lyap_sum += log_n + half_nm1 * std::log(mag2);
+            lyap_sum += log_dn + half_nm1 * std::log(mag2);
             ++count;
         }
 
@@ -244,7 +249,7 @@ inline SmoothLyapunov scalar_lyapunov_iter(double re, double im, const ViewState
             // Smooth escape-time
             const double log_zn = std::log(mag2) * 0.5;
             const double nu     = std::log(log_zn / log_n) / log_n;
-            const double smooth = std::max(0.0, static_cast<double>(i) + 1.0 - nu);
+            const double smooth = std::max(0.0, static_cast<double>(i) + 1.0 - std::max(0.0, nu));
             const double lambda = (count > 0) ? lyap_sum / count : 0.0;
             return {smooth, lambda};
         }

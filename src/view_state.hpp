@@ -25,6 +25,15 @@ enum ColorMode {
 };
 constexpr int COLOR_MODE_COUNT = 3;
 
+// Base for smooth escape-time coloring, shared by the scalar and AVX kernels.
+// |n| handles negative exponents; |n| <= 1 has no usable log base (log(n)
+// would be zero, negative, or NaN) — fall back to classic log2 banding.
+inline double smooth_color_base(double n)
+{
+    const double a = n < 0.0 ? -n : n;
+    return (a > 1.000001) ? a : 2.0;
+}
+
 struct ViewState {
     double      center_x        =  0.0;
     double      center_y        =  0.0;

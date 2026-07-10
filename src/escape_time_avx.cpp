@@ -267,7 +267,9 @@ static void avx_multibrot_kernel(double re0, double scale, double im, int max_it
     // smooth = iters + 1 - log_n(log_n(|z|))
     __m256d log_zn = _mm256_mul_pd(Sleef_logd4_u35(final_r2), half);       // log(|z|)
     __m256d nu     = _mm256_mul_pd(Sleef_logd4_u35(_mm256_mul_pd(log_zn, inv_logn)), inv_logn);
-    __m256d smooth = _mm256_max_pd(zero_v, _mm256_sub_pd(_mm256_add_pd(iters_d, one_v), nu));
+    // clamp nu >= 0 so smooth <= i+1 (matches scalar kernels)
+    __m256d smooth = _mm256_max_pd(zero_v, _mm256_sub_pd(_mm256_add_pd(iters_d, one_v),
+                                                          _mm256_max_pd(zero_v, nu)));
     // Interior points (still active) get max_iter; escaped points get smooth value
     __m256d result = _mm256_blendv_pd(smooth, max_d_v, active);
     _mm256_storeu_pd(out4, result);
@@ -338,7 +340,7 @@ static void avx_multibrot_slow_kernel(double re0, double scale, double im,
     if constexpr (ComputeLyapunov) {
         log_deriv_sum = _mm256_setzero_pd();
         lyap_n_iters  = _mm256_setzero_pd();
-        log_n_v       = _mm256_set1_pd(std::log(exp_n));
+        log_n_v       = _mm256_set1_pd(std::log(std::max(std::abs(exp_n), 1e-300)));
         nm1_half_v    = _mm256_set1_pd((exp_n - 1.0) / 2.0);
     }
 
@@ -386,13 +388,15 @@ static void avx_multibrot_slow_kernel(double re0, double scale, double im,
 
     // Vectorized smooth coloring using SLEEF
     const __m256d max_d_v  = _mm256_set1_pd(static_cast<double>(max_iter));
-    const __m256d inv_logn = _mm256_set1_pd(1.0 / std::log(exp_n));
+    const __m256d inv_logn = _mm256_set1_pd(1.0 / std::log(smooth_color_base(exp_n)));
     const __m256d one_v    = _mm256_set1_pd(1.0);
     const __m256d zero_v   = _mm256_setzero_pd();
 
     __m256d log_zn = _mm256_mul_pd(Sleef_logd4_u35(final_r2), half);
     __m256d nu     = _mm256_mul_pd(Sleef_logd4_u35(_mm256_mul_pd(log_zn, inv_logn)), inv_logn);
-    __m256d smooth = _mm256_max_pd(zero_v, _mm256_sub_pd(_mm256_add_pd(iters_d, one_v), nu));
+    // clamp nu >= 0 so smooth <= i+1 (matches scalar kernels)
+    __m256d smooth = _mm256_max_pd(zero_v, _mm256_sub_pd(_mm256_add_pd(iters_d, one_v),
+                                                          _mm256_max_pd(zero_v, nu)));
     __m256d result = _mm256_blendv_pd(smooth, max_d_v, active);
     _mm256_storeu_pd(out4, result);
 
