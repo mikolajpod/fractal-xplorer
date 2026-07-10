@@ -14,8 +14,9 @@
 // -----------------------------------------------------------------------
 CpuRenderer::CpuRenderer()
 {
-    use_avx    = __builtin_cpu_supports("avx");
-    avx_active = use_avx;
+    hw_avx     = __builtin_cpu_supports("avx");
+    use_avx    = hw_avx;
+    avx_active = hw_avx;
 
     int n = static_cast<int>(std::thread::hardware_concurrency());
     if (n < 1) n = 4;

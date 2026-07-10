@@ -674,7 +674,7 @@ void draw_benchmark_dialog(AppState& app)
             if (ImGui::Button(bench_done ? "Run again" : "Run")) {
                 bench_avx.assign(hw, 0.0f);
                 bench_scalar.assign(hw, 0.0f);
-                bench_phase   = 0;
+                bench_phase   = app.renderer.hw_avx ? 0 : 1;  // skip AVX phase on non-AVX CPUs
                 bench_ti      = 0;
                 bench_rep     = 0;
                 bench_sum     = 0.0;
@@ -725,8 +725,11 @@ void draw_benchmark_dialog(AppState& app)
 
             // AVX chart
             char avx_lbl[48], scalar_lbl[48];
-            snprintf(avx_lbl,    sizeof(avx_lbl),
-                     "AVX  (Mpix/s, 1..%d threads)", hw);
+            if (app.renderer.hw_avx)
+                snprintf(avx_lbl, sizeof(avx_lbl),
+                         "AVX  (Mpix/s, 1..%d threads)", hw);
+            else
+                snprintf(avx_lbl, sizeof(avx_lbl), "AVX  (not supported)");
             snprintf(scalar_lbl, sizeof(scalar_lbl),
                      "Scalar(Mpix/s, 1..%d threads)", hw);
 
