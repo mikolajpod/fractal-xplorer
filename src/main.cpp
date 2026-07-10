@@ -9,6 +9,7 @@
 #include "escape_time.hpp"
 #include "palette.hpp"
 #include "cli_benchmark.hpp"
+#include "cli_selftest.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -26,6 +27,11 @@ int main(int argc, char* argv[])
     if (argc > 1 && std::string(argv[1]) == "--benchmark") {
         run_cli_benchmark();
         return 0;
+    }
+
+    // CLI scalar/AVX parity self-test — no GUI needed
+    if (argc > 1 && std::string(argv[1]) == "--selftest") {
+        return run_cli_selftest();
     }
 
     // Check for --no-avx flag anywhere in argv
