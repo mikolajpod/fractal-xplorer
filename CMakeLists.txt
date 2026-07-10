@@ -58,10 +58,18 @@ target_include_directories(fractal_xplorer PRIVATE
     ${CMAKE_CURRENT_BINARY_DIR}   # generated version.hpp
 )
 
+# OpenGL: opengl32 is Windows-only; use the imported target elsewhere (Linux)
+if(WIN32)
+    set(OPENGL_LIBS opengl32)
+else()
+    find_package(OpenGL REQUIRED)
+    set(OPENGL_LIBS OpenGL::GL)
+endif()
+
 target_link_libraries(fractal_xplorer PRIVATE
     SDL2::SDL2main
     SDL2::SDL2
-    opengl32
+    ${OPENGL_LIBS}
     PNG::PNG
     ${SLEEF_LINK_LIBRARIES}
 )
