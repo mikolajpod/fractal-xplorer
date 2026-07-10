@@ -57,7 +57,10 @@ static void avx_newton_4_impl(double re0, double scale, double im,
         // denom = dr*dr + di*di
         __m256d denom = _mm256_add_pd(_mm256_mul_pd(dr, dr), _mm256_mul_pd(di, di));
 
-        // Protect against degenerate denominator — set step to 0 for those lanes
+        // Degenerate derivative: the lane must not pass the convergence test
+        // via its zeroed step. Excluded from `converged` below, it stays
+        // active with z frozen and reaches max_iter => non-converged (black),
+        // matching the scalar kernel's break.
         __m256d denom_ok = _mm256_cmp_pd(denom, degen_thresh, _CMP_GE_OQ);
         denom = _mm256_blendv_pd(one, denom, denom_ok);  // avoid division by zero
 
@@ -78,7 +81,8 @@ static void avx_newton_4_impl(double re0, double scale, double im,
         // Check convergence: |step|^2 < threshold
         __m256d step_mag2 = _mm256_add_pd(_mm256_mul_pd(step_re, step_re),
                                            _mm256_mul_pd(step_im, step_im));
-        __m256d converged = _mm256_cmp_pd(step_mag2, conv_thresh, _CMP_LT_OQ);
+        __m256d converged = _mm256_and_pd(
+            _mm256_cmp_pd(step_mag2, conv_thresh, _CMP_LT_OQ), denom_ok);
 
         // Deactivate converged lanes; freeze step_mag2 for smooth computation
         if constexpr (ComputeSmooth) {
@@ -86,11 +90,6 @@ static void avx_newton_4_impl(double re0, double scale, double im,
             frozen_step_mag2 = _mm256_blendv_pd(frozen_step_mag2, step_mag2, newly_done);
         }
         active = _mm256_andnot_pd(converged, active);
-
-        // Also deactivate degenerate lanes
-        __m256d degen_and_active = _mm256_andnot_pd(denom_ok,
-                                    _mm256_castsi256_pd(_mm256_set1_epi64x(-1LL)));
-        active = _mm256_andnot_pd(degen_and_active, active);
 
         zr = new_zr;
         zi = new_zi;
@@ -134,7 +133,7 @@ static void avx_newton_4_impl(double re0, double scale, double im,
             const double d2 = dx * dx + dy * dy;
             if (d2 < best_dist) { best_dist = d2; best = r; }
         }
-        root4[p] = (best_dist < 1.0) ? best : -1;
+        root4[p] = best;  // no distance cutoff — matches scalar newton_iter
         if constexpr (ComputeSmooth) {
             const double log_smag2 = std::log(final_smag2[p]);
             const double frac = (log_smag2 < 0.0) ? std::log(1e-20) / log_smag2 : 0.0;
