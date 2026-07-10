@@ -228,6 +228,41 @@ void CpuRenderer::render_tile(const ViewState& vs, PixelBuffer& buf,
                             else
                                 avx_buffalo_4(x0, px, scale, im, vs.max_iter, smooth4);
                             break;
+                        case FormulaType::PerpMandelbrot:
+                            if (vs.julia_mode)
+                                avx_perp_mandelbrot_julia_4(x0, px, scale, im, vs.max_iter,
+                                                             vs.julia_re, vs.julia_im, smooth4);
+                            else
+                                avx_perp_mandelbrot_4(x0, px, scale, im, vs.max_iter, smooth4);
+                            break;
+                        case FormulaType::PerpBurningShip:
+                            if (vs.julia_mode)
+                                avx_perp_burning_ship_julia_4(x0, px, scale, im, vs.max_iter,
+                                                               vs.julia_re, vs.julia_im, smooth4);
+                            else
+                                avx_perp_burning_ship_4(x0, px, scale, im, vs.max_iter, smooth4);
+                            break;
+                        case FormulaType::PerpCeltic:
+                            if (vs.julia_mode)
+                                avx_perp_celtic_julia_4(x0, px, scale, im, vs.max_iter,
+                                                         vs.julia_re, vs.julia_im, smooth4);
+                            else
+                                avx_perp_celtic_4(x0, px, scale, im, vs.max_iter, smooth4);
+                            break;
+                        case FormulaType::PerpBuffalo:
+                            if (vs.julia_mode)
+                                avx_perp_buffalo_julia_4(x0, px, scale, im, vs.max_iter,
+                                                          vs.julia_re, vs.julia_im, smooth4);
+                            else
+                                avx_perp_buffalo_4(x0, px, scale, im, vs.max_iter, smooth4);
+                            break;
+                        case FormulaType::Lambda:
+                            if (vs.julia_mode)
+                                avx_lambda_julia_4(x0, px, scale, im, vs.max_iter,
+                                                    vs.julia_re, vs.julia_im, smooth4);
+                            else
+                                avx_lambda_4(x0, px, scale, im, vs.max_iter, smooth4);
+                            break;
                         case FormulaType::Collatz:
                             avx_collatz_4(x0, px, scale, im, vs.max_iter, smooth4);
                             break;
@@ -333,6 +368,31 @@ void CpuRenderer::render_tile(const ViewState& vs, PixelBuffer& buf,
                     smooth = vs.julia_mode
                         ? buffalo_julia_iter(re, im, vs.julia_re, vs.julia_im, vs.max_iter)
                         : buffalo_iter(re, im, vs.max_iter);
+                    break;
+                case FormulaType::PerpMandelbrot:
+                    smooth = vs.julia_mode
+                        ? perp_mandelbrot_julia_iter(re, im, vs.julia_re, vs.julia_im, vs.max_iter)
+                        : perp_mandelbrot_iter(re, im, vs.max_iter);
+                    break;
+                case FormulaType::PerpBurningShip:
+                    smooth = vs.julia_mode
+                        ? perp_burning_ship_julia_iter(re, im, vs.julia_re, vs.julia_im, vs.max_iter)
+                        : perp_burning_ship_iter(re, im, vs.max_iter);
+                    break;
+                case FormulaType::PerpCeltic:
+                    smooth = vs.julia_mode
+                        ? perp_celtic_julia_iter(re, im, vs.julia_re, vs.julia_im, vs.max_iter)
+                        : perp_celtic_iter(re, im, vs.max_iter);
+                    break;
+                case FormulaType::PerpBuffalo:
+                    smooth = vs.julia_mode
+                        ? perp_buffalo_julia_iter(re, im, vs.julia_re, vs.julia_im, vs.max_iter)
+                        : perp_buffalo_iter(re, im, vs.max_iter);
+                    break;
+                case FormulaType::Lambda:
+                    smooth = vs.julia_mode
+                        ? lambda_julia_iter(re, im, vs.julia_re, vs.julia_im, vs.max_iter)
+                        : lambda_iter(re, im, vs.max_iter);
                     break;
                 case FormulaType::Collatz:
                     smooth = collatz_iter(re, im, vs.max_iter);

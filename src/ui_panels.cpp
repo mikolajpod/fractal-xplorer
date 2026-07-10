@@ -70,6 +70,11 @@ static void draw_escape_time_tab(AppState& app, const ImGuiIO& io)
             "Multibrot  (z^n + c)",
             "Multibrot  (z^r + c, slow)",
             "Collatz  ((2+7z-(2+5z)cos(pi*z))/4)",
+            "Perp. Mandelbrot  (im: -2|zr|zi)",
+            "Perp. Burning Ship  (im: 2 zr|zi|)",
+            "Perp. Celtic  (re: |..|, im: -2|zr|zi)",
+            "Perp. Buffalo  (re: |..|, im: -2 zr|zi|)",
+            "Lambda  (c*z*(1-z))",
         };
         int f = static_cast<int>(app.vs.formula);
         ImGui::SetNextItemWidth(-1.0f);

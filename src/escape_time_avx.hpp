@@ -74,6 +74,34 @@ void avx_multijulia_slow_4(double x0, int px, double scale, double im,
 void avx_collatz_4(double x0, int px, double scale, double im,
                    int max_iter, double* out4);
 
+// Perpendicular family: abs on a single factor of the imaginary product
+//   Perp. Mandelbrot:   re = zr^2-zi^2,   im = -2|zr|zi
+//   Perp. Burning Ship: re = zr^2-zi^2,   im =  2 zr|zi|
+//   Perp. Celtic:       re = |zr^2-zi^2|, im = -2|zr|zi
+//   Perp. Buffalo:      re = |zr^2-zi^2|, im = -2 zr|zi|
+void avx_perp_mandelbrot_4(double x0, int px, double scale, double im,
+                           int max_iter, double* out4);
+void avx_perp_mandelbrot_julia_4(double x0, int px, double scale, double im,
+                                 int max_iter, double julia_re, double julia_im, double* out4);
+void avx_perp_burning_ship_4(double x0, int px, double scale, double im,
+                             int max_iter, double* out4);
+void avx_perp_burning_ship_julia_4(double x0, int px, double scale, double im,
+                                   int max_iter, double julia_re, double julia_im, double* out4);
+void avx_perp_celtic_4(double x0, int px, double scale, double im,
+                       int max_iter, double* out4);
+void avx_perp_celtic_julia_4(double x0, int px, double scale, double im,
+                             int max_iter, double julia_re, double julia_im, double* out4);
+void avx_perp_buffalo_4(double x0, int px, double scale, double im,
+                        int max_iter, double* out4);
+void avx_perp_buffalo_julia_4(double x0, int px, double scale, double im,
+                              int max_iter, double julia_re, double julia_im, double* out4);
+
+// Lambda: z -> c*z*(1-z) (complex logistic map; z0 = 1/2 in Mandelbrot mode)
+void avx_lambda_4(double x0, int px, double scale, double im,
+                  int max_iter, double* out4);
+void avx_lambda_julia_4(double x0, int px, double scale, double im,
+                        int max_iter, double julia_re, double julia_im, double* out4);
+
 // Lyapunov dispatch — computes both smooth and lambda for 4 pixels.
 // Covers all formula x julia_mode combinations internally.
 void avx_lyapunov_4(FormulaType formula, bool julia_mode,

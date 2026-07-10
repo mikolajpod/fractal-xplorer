@@ -7,12 +7,22 @@
 // Returns smooth iteration count for escaped points, or max_iter for interior.
 // Smooth coloring uses the "normalized iteration count" (log-log) formula.
 
-// Template 1: degree-2 formulas (Standard, BurningShip, Mandelbar n=2, Celtic, Buffalo)
+// Template 1: degree-2 formulas (Standard, BurningShip, Mandelbar n=2, Celtic,
+// Buffalo, and the Perpendicular family).
+// PerpAbsZr / PerpAbsZi take abs of a single *factor* of the imaginary product
+// (perpendicular variants); IsMandelbar then supplies the sign:
+//   PerpMandelbrot:  im = -2|zr|zi   (IsMandelbar + PerpAbsZr)
+//   PerpBurningShip: im =  2 zr|zi|  (PerpAbsZi)
+//   PerpCeltic:      im = -2|zr|zi, re = |zr^2-zi^2|  (+ AbsRe)
+//   PerpBuffalo:     im = -2 zr|zi|, re = |zr^2-zi^2|  (+ AbsRe)
 template<bool IsJulia, bool IsBurningShip, bool IsMandelbar,
-         bool AbsRe = false, bool AbsIm = false>
+         bool AbsRe = false, bool AbsIm = false,
+         bool PerpAbsZr = false, bool PerpAbsZi = false,
+         bool IsLambda = false>
 inline double scalar_kernel(double re, double im, double cr, double ci, int max_iter)
 {
-    double zr = IsJulia ? re : 0.0;
+    // Lambda (z -> c*z*(1-z)) iterates from the critical point z = 1/2, not 0
+    double zr = IsJulia ? re : (IsLambda ? 0.5 : 0.0);
     double zi = IsJulia ? im : 0.0;
     const double c_re = IsJulia ? cr : re;
     const double c_im = IsJulia ? ci : im;
@@ -29,6 +39,17 @@ inline double scalar_kernel(double re, double im, double cr, double ci, int max_
         if constexpr (IsBurningShip) {
             new_zr = zr2 - zi2 + c_re;
             new_zi = std::abs(2.0 * zr * zi) + c_im;
+        } else if constexpr (PerpAbsZr || PerpAbsZi) {
+            const double fr = PerpAbsZr ? std::abs(zr) : zr;
+            const double fi = PerpAbsZi ? std::abs(zi) : zi;
+            new_zr = (AbsRe ? std::abs(zr2 - zi2) : zr2 - zi2) + c_re;
+            new_zi = (IsMandelbar ? -2.0*fr*fi : 2.0*fr*fi) + c_im;
+        } else if constexpr (IsLambda) {
+            // z <- c * z * (1 - z);  w = z - z^2
+            const double wr = zr - (zr2 - zi2);
+            const double wi = zi - 2.0*zr*zi;
+            new_zr = c_re*wr - c_im*wi;
+            new_zi = c_re*wi + c_im*wr;
         } else if constexpr (AbsRe || AbsIm) {
             new_zr = (AbsRe ? std::abs(zr2 - zi2) : zr2 - zi2) + c_re;
             new_zi = (AbsIm ? std::abs(2.0*zr*zi) : 2.0*zr*zi) + c_im;
@@ -177,6 +198,38 @@ inline double buffalo_iter(double re, double im, int max_iter)
 inline double buffalo_julia_iter(double re, double im, double cr, double ci, int max_iter)
     { return scalar_kernel<true,false,false,true,true>(re, im, cr, ci, max_iter); }
 
+// Perpendicular family: <IsJulia, IsBurningShip, IsMandelbar, AbsRe, AbsIm, PerpAbsZr, PerpAbsZi>
+inline double perp_mandelbrot_iter(double re, double im, int max_iter)
+    { return scalar_kernel<false,false,true,false,false,true,false>(re, im, 0, 0, max_iter); }
+
+inline double perp_mandelbrot_julia_iter(double re, double im, double cr, double ci, int max_iter)
+    { return scalar_kernel<true,false,true,false,false,true,false>(re, im, cr, ci, max_iter); }
+
+inline double perp_burning_ship_iter(double re, double im, int max_iter)
+    { return scalar_kernel<false,false,false,false,false,false,true>(re, im, 0, 0, max_iter); }
+
+inline double perp_burning_ship_julia_iter(double re, double im, double cr, double ci, int max_iter)
+    { return scalar_kernel<true,false,false,false,false,false,true>(re, im, cr, ci, max_iter); }
+
+inline double perp_celtic_iter(double re, double im, int max_iter)
+    { return scalar_kernel<false,false,true,true,false,true,false>(re, im, 0, 0, max_iter); }
+
+inline double perp_celtic_julia_iter(double re, double im, double cr, double ci, int max_iter)
+    { return scalar_kernel<true,false,true,true,false,true,false>(re, im, cr, ci, max_iter); }
+
+inline double perp_buffalo_iter(double re, double im, int max_iter)
+    { return scalar_kernel<false,false,true,true,false,false,true>(re, im, 0, 0, max_iter); }
+
+inline double perp_buffalo_julia_iter(double re, double im, double cr, double ci, int max_iter)
+    { return scalar_kernel<true,false,true,true,false,false,true>(re, im, cr, ci, max_iter); }
+
+// Lambda: z -> c*z*(1-z)  <IsJulia, ..., PerpAbsZr, PerpAbsZi, IsLambda>
+inline double lambda_iter(double re, double im, int max_iter)
+    { return scalar_kernel<false,false,false,false,false,false,false,true>(re, im, 0, 0, max_iter); }
+
+inline double lambda_julia_iter(double re, double im, double cr, double ci, int max_iter)
+    { return scalar_kernel<true,false,false,false,false,false,false,true>(re, im, cr, ci, max_iter); }
+
 inline double multibrot_iter(double re, double im, int max_iter, int n)
     { return scalar_multibrot_kernel<false>(re, im, 0, 0, max_iter, n); }
 
@@ -208,6 +261,10 @@ inline SmoothLyapunov scalar_lyapunov_iter(double re, double im, const ViewState
         // Collatz: z0 = pixel, no c parameter
         zr = re; zi = im;
         cr = 0.0; ci = 0.0;
+    } else if (vs.formula == FormulaType::Lambda && !vs.julia_mode) {
+        // Lambda: iterate from the critical point z = 1/2
+        zr = 0.5; zi = 0.0;
+        cr = re; ci = im;
     } else if (vs.julia_mode) {
         zr = re; zi = im;
         cr = vs.julia_re; ci = vs.julia_im;
@@ -232,14 +289,26 @@ inline SmoothLyapunov scalar_lyapunov_iter(double re, double im, const ViewState
     const double log_dn    = std::log(std::max(std::abs(exp_n), 1e-300));  // |f'| term, guarded
     const double half_nm1  = (exp_n - 1.0) * 0.5;
 
+    // Lambda uses the exact derivative |f'(z)| = |c|*|1-2z| (c = lambda)
+    const bool   is_lambda  = (vs.formula == FormulaType::Lambda);
+    const double log_lambda = is_lambda
+        ? 0.5 * std::log(std::max(cr*cr + ci*ci, 1e-300)) : 0.0;
+
     double lyap_sum = 0.0;
     int    count    = 0;
 
     for (int i = 0; i < vs.max_iter; ++i) {
         const double mag2 = zr * zr + zi * zi;
 
-        // Accumulate Lyapunov: log|f'(z)| = log(n) + (n-1)/2 * log(|z|^2)
-        if (mag2 > 0.0) {
+        // Accumulate Lyapunov: log|f'(z)| = log(n) + (n-1)/2 * log(|z|^2);
+        // Lambda: exact log|f'| = log|c| + 0.5*log((1-2*zr)^2 + (2*zi)^2)
+        if (is_lambda) {
+            const double one_m2zr = 1.0 - 2.0*zr;
+            const double two_zi   = 2.0*zi;
+            const double w = std::max(one_m2zr*one_m2zr + two_zi*two_zi, 1e-300);
+            lyap_sum += log_lambda + 0.5 * std::log(w);
+            ++count;
+        } else if (mag2 > 0.0) {
             lyap_sum += log_dn + half_nm1 * std::log(mag2);
             ++count;
         }
@@ -277,6 +346,35 @@ inline SmoothLyapunov scalar_lyapunov_iter(double re, double im, const ViewState
                 const double zr2 = zr*zr, zi2 = zi*zi;
                 new_zr = std::abs(zr2 - zi2) + cr;
                 new_zi = std::abs(2.0*zr*zi) + ci;
+                break;
+            }
+            case FormulaType::PerpMandelbrot: {
+                new_zr = zr*zr - zi*zi + cr;
+                new_zi = -2.0*std::abs(zr)*zi + ci;
+                break;
+            }
+            case FormulaType::PerpBurningShip: {
+                new_zr = zr*zr - zi*zi + cr;
+                new_zi = 2.0*zr*std::abs(zi) + ci;
+                break;
+            }
+            case FormulaType::PerpCeltic: {
+                const double zr2 = zr*zr, zi2 = zi*zi;
+                new_zr = std::abs(zr2 - zi2) + cr;
+                new_zi = -2.0*std::abs(zr)*zi + ci;
+                break;
+            }
+            case FormulaType::PerpBuffalo: {
+                const double zr2 = zr*zr, zi2 = zi*zi;
+                new_zr = std::abs(zr2 - zi2) + cr;
+                new_zi = -2.0*zr*std::abs(zi) + ci;
+                break;
+            }
+            case FormulaType::Lambda: {
+                const double wr = zr - (zr*zr - zi*zi);
+                const double wi = zi - 2.0*zr*zi;
+                new_zr = cr*wr - ci*wi;
+                new_zi = cr*wi + ci*wr;
                 break;
             }
             case FormulaType::Mandelbar: {
@@ -362,6 +460,10 @@ compute_orbit(double re, double im, const ViewState& vs, int max_n = 20)
         // Collatz: z0 = pixel, no c parameter (z=0 is a fixed point)
         zr = re; zi = im;
         cr = 0.0; ci = 0.0;
+    } else if (vs.formula == FormulaType::Lambda && !vs.julia_mode) {
+        // Lambda: iterate from the critical point z = 1/2
+        zr = 0.5; zi = 0.0;
+        cr = re; ci = im;
     } else if (vs.julia_mode) {
         zr = re; zi = im;
         cr = vs.julia_re; ci = vs.julia_im;
@@ -396,6 +498,35 @@ compute_orbit(double re, double im, const ViewState& vs, int max_n = 20)
                 const double zr2 = zr*zr, zi2 = zi*zi;
                 new_zr = std::abs(zr2 - zi2) + cr;
                 new_zi = std::abs(2.0*zr*zi) + ci;
+                break;
+            }
+            case FormulaType::PerpMandelbrot: {
+                new_zr = zr*zr - zi*zi + cr;
+                new_zi = -2.0*std::abs(zr)*zi + ci;
+                break;
+            }
+            case FormulaType::PerpBurningShip: {
+                new_zr = zr*zr - zi*zi + cr;
+                new_zi = 2.0*zr*std::abs(zi) + ci;
+                break;
+            }
+            case FormulaType::PerpCeltic: {
+                const double zr2 = zr*zr, zi2 = zi*zi;
+                new_zr = std::abs(zr2 - zi2) + cr;
+                new_zi = -2.0*std::abs(zr)*zi + ci;
+                break;
+            }
+            case FormulaType::PerpBuffalo: {
+                const double zr2 = zr*zr, zi2 = zi*zi;
+                new_zr = std::abs(zr2 - zi2) + cr;
+                new_zi = -2.0*zr*std::abs(zi) + ci;
+                break;
+            }
+            case FormulaType::Lambda: {
+                const double wr = zr - (zr*zr - zi*zi);
+                const double wi = zi - 2.0*zr*zi;
+                new_zr = cr*wr - ci*wi;
+                new_zi = cr*wi + ci*wr;
                 break;
             }
             case FormulaType::Mandelbar: {

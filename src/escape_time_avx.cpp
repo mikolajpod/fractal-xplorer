@@ -16,8 +16,12 @@
 //    matching the scalar formula: smooth = iter + 1 - nu
 //  - z update uses mul+add/sub (no FMA)
 // -----------------------------------------------------------------------
+// PerpAbsZr / PerpAbsZi: perpendicular variants — abs of a single factor of
+// the imaginary product (IsMandelbar supplies the sign). Appended after
+// ComputeLyapunov so existing explicit instantiations keep their meaning.
 template<bool IsJulia, bool IsBurningShip, bool IsMandelbar,
-         bool AbsRe = false, bool AbsIm = false, bool ComputeLyapunov = false>
+         bool AbsRe = false, bool AbsIm = false, bool ComputeLyapunov = false,
+         bool PerpAbsZr = false, bool PerpAbsZi = false, bool IsLambda = false>
 static void avx_kernel(double x0, int px, double scale, double im, int max_iter,
                         double c_re, double c_im, double* out4,
                         double* lyap_out4 = nullptr)
@@ -35,7 +39,8 @@ static void avx_kernel(double x0, int px, double scale, double im, int max_iter,
     } else {
         cr = re4;
         ci = _mm256_set1_pd(im);
-        zr = _mm256_setzero_pd();
+        // Lambda (z -> c*z*(1-z)) iterates from the critical point z = 1/2
+        zr = IsLambda ? _mm256_set1_pd(0.5) : _mm256_setzero_pd();
         zi = _mm256_setzero_pd();
     }
 
@@ -51,14 +56,21 @@ static void avx_kernel(double x0, int px, double scale, double im, int max_iter,
     __m256d iters_d  = _mm256_setzero_pd();
     __m256d final_r2 = _mm256_set1_pd(4.0);
 
-    // Lyapunov accumulators (degree 2: log|f'| = log(2) + 0.5*log(|z|^2))
+    // Lyapunov accumulators (degree 2: log|f'| = log(2) + 0.5*log(|z|^2);
+    // Lambda uses the exact derivative |f'(z)| = |c|*|1-2z| instead)
     __m256d log_deriv_sum, lyap_n_iters;
-    __m256d log_n_v, nm1_half_v;
+    __m256d log_n_v, nm1_half_v, log_lambda_v;
     if constexpr (ComputeLyapunov) {
         log_deriv_sum = _mm256_setzero_pd();
         lyap_n_iters  = _mm256_setzero_pd();
         log_n_v       = _mm256_set1_pd(std::log(2.0));
         nm1_half_v    = _mm256_set1_pd(0.5);
+        if constexpr (IsLambda) {
+            // log|c| per lane (c = lambda; varies per lane in Mandelbrot mode)
+            __m256d c_mag2 = _mm256_add_pd(_mm256_mul_pd(cr, cr), _mm256_mul_pd(ci, ci));
+            c_mag2 = _mm256_max_pd(c_mag2, _mm256_set1_pd(1e-300));
+            log_lambda_v = _mm256_mul_pd(Sleef_logd4_u35(c_mag2), nm1_half_v);
+        }
     }
 
     for (int i = 0; i < max_iter; ++i) {
@@ -68,11 +80,24 @@ static void avx_kernel(double x0, int px, double scale, double im, int max_iter,
 
         // Lyapunov: accumulate log|f'(z)| for active lanes with mag2 > eps
         if constexpr (ComputeLyapunov) {
-            __m256d safe_mag2 = _mm256_max_pd(mag2, _mm256_set1_pd(1e-300));
-            __m256d log_mag2  = Sleef_logd4_u35(safe_mag2);
-            __m256d log_deriv = _mm256_add_pd(_mm256_mul_pd(nm1_half_v, log_mag2), log_n_v);
-            __m256d accum_mask = _mm256_and_pd(active,
-                _mm256_cmp_pd(mag2, _mm256_set1_pd(1e-200), _CMP_GT_OQ));
+            __m256d log_deriv, accum_mask;
+            if constexpr (IsLambda) {
+                // exact: log|f'| = log|c| + 0.5*log((1-2*zr)^2 + (2*zi)^2)
+                const __m256d one_m2zr = _mm256_sub_pd(one, _mm256_add_pd(zr, zr));
+                const __m256d two_zi   = _mm256_add_pd(zi, zi);
+                __m256d w = _mm256_add_pd(_mm256_mul_pd(one_m2zr, one_m2zr),
+                                          _mm256_mul_pd(two_zi, two_zi));
+                w = _mm256_max_pd(w, _mm256_set1_pd(1e-300));
+                log_deriv  = _mm256_add_pd(log_lambda_v,
+                                 _mm256_mul_pd(nm1_half_v, Sleef_logd4_u35(w)));
+                accum_mask = active;
+            } else {
+                __m256d safe_mag2 = _mm256_max_pd(mag2, _mm256_set1_pd(1e-300));
+                __m256d log_mag2  = Sleef_logd4_u35(safe_mag2);
+                log_deriv  = _mm256_add_pd(_mm256_mul_pd(nm1_half_v, log_mag2), log_n_v);
+                accum_mask = _mm256_and_pd(active,
+                    _mm256_cmp_pd(mag2, _mm256_set1_pd(1e-200), _CMP_GT_OQ));
+            }
             log_deriv_sum = _mm256_add_pd(log_deriv_sum, _mm256_and_pd(accum_mask, log_deriv));
             lyap_n_iters  = _mm256_add_pd(lyap_n_iters,  _mm256_and_pd(accum_mask, one));
         }
@@ -97,6 +122,24 @@ static void avx_kernel(double x0, int px, double scale, double im, int max_iter,
             // (zr^2 - zi^2) + cr — scalar kernel's association, for bit parity
             new_zr = _mm256_add_pd(_mm256_sub_pd(zr2, zi2), cr);
             new_zi = _mm256_add_pd(_mm256_mul_pd(_mm256_add_pd(azr, azr), azi), ci);  // 2|zr||zi| + ci
+        } else if constexpr (PerpAbsZr || PerpAbsZi) {
+            // Perpendicular family: abs of one factor; IsMandelbar = sign
+            const __m256d fr = PerpAbsZr ? _mm256_andnot_pd(sign_bit, zr) : zr;
+            const __m256d fi = PerpAbsZi ? _mm256_andnot_pd(sign_bit, zi) : zi;
+            const __m256d re_raw = _mm256_sub_pd(zr2, zi2);
+            new_zr = _mm256_add_pd(
+                AbsRe ? _mm256_andnot_pd(sign_bit, re_raw) : re_raw, cr);
+            const __m256d prod = _mm256_mul_pd(_mm256_add_pd(fr, fr), fi);  // 2*fr*fi
+            if constexpr (IsMandelbar)
+                new_zi = _mm256_sub_pd(ci, prod);   // -2*fr*fi + ci
+            else
+                new_zi = _mm256_add_pd(prod, ci);   //  2*fr*fi + ci
+        } else if constexpr (IsLambda) {
+            // z <- c * z * (1 - z);  w = z - z^2 — associations match scalar
+            const __m256d wr = _mm256_sub_pd(zr, _mm256_sub_pd(zr2, zi2));
+            const __m256d wi = _mm256_sub_pd(zi, _mm256_mul_pd(_mm256_add_pd(zr, zr), zi));
+            new_zr = _mm256_sub_pd(_mm256_mul_pd(cr, wr), _mm256_mul_pd(ci, wi));
+            new_zi = _mm256_add_pd(_mm256_mul_pd(cr, wi), _mm256_mul_pd(ci, wr));
         } else if constexpr (AbsRe || AbsIm) {
             // Celtic (AbsRe only) / Buffalo (AbsRe+AbsIm): abs applied after squaring
             const __m256d re_raw = _mm256_sub_pd(zr2, zi2);                       // zr^2 - zi^2
@@ -476,6 +519,72 @@ void avx_buffalo_julia_4(double x0, int px, double scale, double im,
 }
 
 // -----------------------------------------------------------------------
+// Perpendicular family entry points
+// <IsJulia, IsBurningShip, IsMandelbar, AbsRe, AbsIm, ComputeLyapunov, PerpAbsZr, PerpAbsZi>
+// -----------------------------------------------------------------------
+
+void avx_perp_mandelbrot_4(double x0, int px, double scale, double im,
+                           int max_iter, double* out4)
+{
+    avx_kernel<false, false, true, false, false, false, true, false>(x0, px, scale, im, max_iter, 0.0, 0.0, out4);
+}
+
+void avx_perp_mandelbrot_julia_4(double x0, int px, double scale, double im,
+                                 int max_iter, double julia_re, double julia_im, double* out4)
+{
+    avx_kernel<true, false, true, false, false, false, true, false>(x0, px, scale, im, max_iter, julia_re, julia_im, out4);
+}
+
+void avx_perp_burning_ship_4(double x0, int px, double scale, double im,
+                             int max_iter, double* out4)
+{
+    avx_kernel<false, false, false, false, false, false, false, true>(x0, px, scale, im, max_iter, 0.0, 0.0, out4);
+}
+
+void avx_perp_burning_ship_julia_4(double x0, int px, double scale, double im,
+                                   int max_iter, double julia_re, double julia_im, double* out4)
+{
+    avx_kernel<true, false, false, false, false, false, false, true>(x0, px, scale, im, max_iter, julia_re, julia_im, out4);
+}
+
+void avx_perp_celtic_4(double x0, int px, double scale, double im,
+                       int max_iter, double* out4)
+{
+    avx_kernel<false, false, true, true, false, false, true, false>(x0, px, scale, im, max_iter, 0.0, 0.0, out4);
+}
+
+void avx_perp_celtic_julia_4(double x0, int px, double scale, double im,
+                             int max_iter, double julia_re, double julia_im, double* out4)
+{
+    avx_kernel<true, false, true, true, false, false, true, false>(x0, px, scale, im, max_iter, julia_re, julia_im, out4);
+}
+
+void avx_perp_buffalo_4(double x0, int px, double scale, double im,
+                        int max_iter, double* out4)
+{
+    avx_kernel<false, false, true, true, false, false, false, true>(x0, px, scale, im, max_iter, 0.0, 0.0, out4);
+}
+
+void avx_perp_buffalo_julia_4(double x0, int px, double scale, double im,
+                              int max_iter, double julia_re, double julia_im, double* out4)
+{
+    avx_kernel<true, false, true, true, false, false, false, true>(x0, px, scale, im, max_iter, julia_re, julia_im, out4);
+}
+
+// Lambda: <IsJulia, IsBS, IsMandelbar, AbsRe, AbsIm, ComputeLyapunov, PerpAbsZr, PerpAbsZi, IsLambda>
+void avx_lambda_4(double x0, int px, double scale, double im,
+                  int max_iter, double* out4)
+{
+    avx_kernel<false, false, false, false, false, false, false, false, true>(x0, px, scale, im, max_iter, 0.0, 0.0, out4);
+}
+
+void avx_lambda_julia_4(double x0, int px, double scale, double im,
+                        int max_iter, double julia_re, double julia_im, double* out4)
+{
+    avx_kernel<true, false, false, false, false, false, false, false, true>(x0, px, scale, im, max_iter, julia_re, julia_im, out4);
+}
+
+// -----------------------------------------------------------------------
 // Collatz fractal: z -> (2 + 7z - (2+5z)*cos(pi*z)) / 4
 // z0 = pixel, no c parameter.
 // cos(pi*z) for complex z: cos(pi*zr)*cosh(pi*zi) - i*sin(pi*zr)*sinh(pi*zi)
@@ -683,6 +792,36 @@ void avx_lyapunov_4(FormulaType formula, bool julia_mode,
                 else
                     avx_multibrot_slow_kernel<false,true>(x0,px,scale,im,max_iter,exp_f,0.0,0.0,smooth4,lyap4);
             }
+            break;
+        case FormulaType::PerpMandelbrot:
+            if (julia_mode)
+                avx_kernel<true,false,true,false,false,true,true,false>(x0,px,scale,im,max_iter,julia_re,julia_im,smooth4,lyap4);
+            else
+                avx_kernel<false,false,true,false,false,true,true,false>(x0,px,scale,im,max_iter,0.0,0.0,smooth4,lyap4);
+            break;
+        case FormulaType::PerpBurningShip:
+            if (julia_mode)
+                avx_kernel<true,false,false,false,false,true,false,true>(x0,px,scale,im,max_iter,julia_re,julia_im,smooth4,lyap4);
+            else
+                avx_kernel<false,false,false,false,false,true,false,true>(x0,px,scale,im,max_iter,0.0,0.0,smooth4,lyap4);
+            break;
+        case FormulaType::PerpCeltic:
+            if (julia_mode)
+                avx_kernel<true,false,true,true,false,true,true,false>(x0,px,scale,im,max_iter,julia_re,julia_im,smooth4,lyap4);
+            else
+                avx_kernel<false,false,true,true,false,true,true,false>(x0,px,scale,im,max_iter,0.0,0.0,smooth4,lyap4);
+            break;
+        case FormulaType::PerpBuffalo:
+            if (julia_mode)
+                avx_kernel<true,false,true,true,false,true,false,true>(x0,px,scale,im,max_iter,julia_re,julia_im,smooth4,lyap4);
+            else
+                avx_kernel<false,false,true,true,false,true,false,true>(x0,px,scale,im,max_iter,0.0,0.0,smooth4,lyap4);
+            break;
+        case FormulaType::Lambda:
+            if (julia_mode)
+                avx_kernel<true,false,false,false,false,true,false,false,true>(x0,px,scale,im,max_iter,julia_re,julia_im,smooth4,lyap4);
+            else
+                avx_kernel<false,false,false,false,false,true,false,false,true>(x0,px,scale,im,max_iter,0.0,0.0,smooth4,lyap4);
             break;
         case FormulaType::Collatz:
             avx_collatz_kernel<true>(x0,px,scale,im,max_iter,smooth4,lyap4);

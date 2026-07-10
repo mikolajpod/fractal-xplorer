@@ -15,8 +15,13 @@ enum class FormulaType {
     MultiFast   = 5,  // z^n + c  (integer exp 2-8, AVX)
     MultiSlow   = 6,  // z^n + c  (real exp, AVX polar form via SLEEF)
     Collatz     = 7,  // (2+7z-(2+5z)cos(pi*z))/4  (complex Collatz map)
+    PerpMandelbrot  =  8,  // re = zr^2-zi^2,  im = -2|zr|zi
+    PerpBurningShip =  9,  // re = zr^2-zi^2,  im =  2 zr|zi|
+    PerpCeltic      = 10,  // re = |zr^2-zi^2|, im = -2|zr|zi
+    PerpBuffalo     = 11,  // re = |zr^2-zi^2|, im = -2 zr|zi|
+    Lambda          = 12,  // z -> c*z*(1-z)  (complex logistic map; z0 = 1/2 in M-mode)
 };
-constexpr int FORMULA_COUNT = 8;
+constexpr int FORMULA_COUNT = 13;
 
 enum ColorMode {
     COLOR_SMOOTH            = 0,
@@ -91,6 +96,16 @@ inline const char* fractal_name(const ViewState& vs)
             return vs.julia_mode ? "Buffalo Julia"      : "Buffalo";
         case FormulaType::Collatz:
             return "Collatz";
+        case FormulaType::PerpMandelbrot:
+            return vs.julia_mode ? "Perp. Mandelbrot Julia"   : "Perp. Mandelbrot";
+        case FormulaType::PerpBurningShip:
+            return vs.julia_mode ? "Perp. Burning Ship Julia" : "Perp. Burning Ship";
+        case FormulaType::PerpCeltic:
+            return vs.julia_mode ? "Perp. Celtic Julia"       : "Perp. Celtic";
+        case FormulaType::PerpBuffalo:
+            return vs.julia_mode ? "Perp. Buffalo Julia"      : "Perp. Buffalo";
+        case FormulaType::Lambda:
+            return vs.julia_mode ? "Lambda Julia"             : "Lambda";
     }
     return "Unknown";
 }
